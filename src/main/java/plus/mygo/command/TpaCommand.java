@@ -90,8 +90,8 @@ public class TpaCommand {
         ServerPlayer target = source.getServer().getPlayerList().getPlayerByName(targetName);
 
         if (target == null) {
-            // 目标玩家不在线或名称有误，向执行者发送失败提示
-            source.sendFailure(Component.literal("玩家 " + targetName + " 不在线或不存在。"));
+            // 目标玩家不在线或名称有误，向执行者发送失败提示（客户端按其语言渲染）
+            source.sendFailure(Component.translatable("aya-server-mod.command.tpa.player_not_found", targetName));
             return 0;
         }
 
