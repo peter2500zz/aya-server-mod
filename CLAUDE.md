@@ -44,7 +44,9 @@ src/main/java/plus/mygo/
 - 每条命令独立一个类，放在 `plus.mygo.command` 包下。
 - 命令类对外只暴露一个静态方法 `register()`，由 `AyaServerMod.onInitialize()` 调用。
 - 命令注册使用 `CommandRegistrationCallback.EVENT`（`net.fabricmc.fabric.api.command.v2`）。
-- 本模组为纯服务端 mod，`fabric.mod.json` 中 `environment` 固定为 `"server"`，无客户端源集。
+- 本模组为纯服务端 mod（功能逻辑全部在服务端），无客户端源集。
+- `fabric.mod.json` 中 `environment` 固定为 `"*"`，**不得改为 `"server"`**。
+  `"server"` 仅允许 mod 在专用服务器 JVM 上加载，会导致单人/局域网（集成服务器运行于客户端 JVM 内）中 mod 完全不加载、命令无法注册。
 
 ## 命令编写规范
 
