@@ -89,10 +89,13 @@ public class TpaCommand {
                 false
         );
 
-        // 通知目标玩家：告知其有人传送至自己位置，使用自定义 i18n key
-        target.sendSystemMessage(
-                Component.translatable("aya-server-mod.command.tpa.notified", executor.getDisplayName())
-        );
+        // 通知目标玩家：告知其有人传送至自己位置，使用自定义 i18n key；
+        // 若目标与执行者为同一玩家（传送到自身），跳过此通知以避免重复提示
+        if (!target.equals(executor)) {
+            target.sendSystemMessage(
+                    Component.translatable("aya-server-mod.command.tpa.notified", executor.getDisplayName())
+            );
+        }
 
         return 1;
     }
