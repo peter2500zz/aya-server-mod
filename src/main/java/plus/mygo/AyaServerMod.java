@@ -4,6 +4,7 @@ import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import plus.mygo.command.HereCommand;
+import plus.mygo.command.TpaCommand;
 
 /**
  * Mod 主入口。
@@ -26,5 +27,6 @@ public class AyaServerMod implements ModInitializer {
     @Override
     public void onInitialize() {
         HereCommand.register();
+        TpaCommand.register();
     }
 }

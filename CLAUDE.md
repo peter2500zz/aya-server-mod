@@ -20,6 +20,8 @@ Minecraft 26.1 起使用 Mojang 官方类名，**禁止使用 Yarn 映射名**�
 | `StatusEffectInstance`   | `MobEffectInstance`       |
 | `addStatusEffect()`      | `addEffect()`             |
 | `Text.literal`           | `Component.literal`       |
+| `GameProfile.getName()`  | `GameProfile.name()`（record accessor）|
+| `ServerPlayer.serverLevel()` | `ServerPlayer.level()`（协变返回 `ServerLevel`）|
 
 ## 设计原则
 
@@ -111,7 +113,9 @@ entity.addEffect(new MobEffectInstance(MobEffects.GLOWING, DURATION_TICKS, 0, fa
 
 - 每个功能里程碑单独 commit，commit message 使用 `feat: / fix: / refactor: / docs:` 前缀。
 - GPG 签名已在本仓库关闭（`commit.gpgsign=false`）。
-- **每次编辑代码前确认 git 状态**；有未提交变更时，先确认处理方式再继续。
+- **在开始任何任务前，必须先执行 `git status` 检查未提交变更。**
+  若存在未提交文件，说明用户进行了手动修改；须先阅读 `git diff` 理解变更内容，
+  为其完成提交后，再执行后续任务。
 
 ## 禁止事项
 
