@@ -1,27 +1,25 @@
 package plus.mygo.command;
 
-import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
-import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Relative;
 
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * /tpa 指令。
  * <p>
  * 仅限玩家执行。将执行指令的玩家立即传送至目标在线玩家所在位置，支持跨维度传送。
- * 参数不接受实体选择器（{@code @a}、{@code @p} 等），仅接受精确玩家名；
- * Tab 补全自动提供当前在线玩家列表（已排除执行者自身）。
+ * 参数使用 {@link EntityArgument#player()}，提供与原版 /tell 完全一致的玩家补全体验
+ * （在线玩家名 + @s/@p 等选择器，但因 player() 限制，选择器最终必须解析为恰好一名玩家）。
+ * 传送成功后仅通知执行者与目标玩家，不广播至全服。
  */
 public class TpaCommand {
 
@@ -37,9 +35,11 @@ public class TpaCommand {
             dispatcher.register(Commands.literal("tpa")
                 // 在 Brigadier 层面限制为玩家：控制台及非玩家实体不可见此指令
                 .requires(CommandSourceStack::isPlayer)
-                .then(Commands.argument(ARG_PLAYER, StringArgumentType.word())
-                    // 提供在线玩家名补全列表，不包含选择器语法
-                    .suggests(TpaCommand::suggestPlayers)
+                .then(Commands.argument(ARG_PLAYER, EntityArgument.player())
+                    // EntityArgument.player() 内置与原版 /tell 完全相同的补全逻辑：
+                    //   - Tab 补全自动列出在线玩家名，并支持 @s/@p 等选择器
+                    //   - 目标玩家不在线时，由原版错误系统（EntityArgument.NO_PLAYERS_FOUND）
+                    //     返回已本地化的提示，无需自定义错误消息
                     .executes(TpaCommand::execute)
                 )
             )
@@ -47,37 +47,12 @@ public class TpaCommand {
     }
 
     /**
-     * Tab 补全逻辑：返回当前在线玩家名列表（排除执行者自身）。
-     * <p>
-     * 使用 {@link StringArgumentType} 而非 {@code EntityArgument} 是为了禁止选择器语法；
-     * 通过此方法手动提供补全以维持与原版 /tp 相近的使用体验。
-     *
-     * @param context Brigadier 指令上下文，用于获取服务器玩家列表和执行者信息
-     * @param builder Brigadier 补全构建器，负责过滤并返回匹配的补全项
-     * @return 异步补全结果
-     */
-    private static CompletableFuture<com.mojang.brigadier.suggestion.Suggestions> suggestPlayers(
-            CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
-        // getPlayer() 返回可空值（非抛出版本），安全获取执行者名称以便从列表中排除自身
-        ServerPlayer executor = context.getSource().getPlayer();
-        String executorName = executor != null ? executor.getGameProfile().name() : "";
-
-        // 收集在线玩家名，过滤掉执行者自身，不向执行者提供"传送到自己"的选项
-        Iterable<String> names = context.getSource().getServer()
-                .getPlayerList().getPlayers().stream()
-                .map(p -> p.getGameProfile().name())
-                .filter(name -> !name.equals(executorName))
-                .toList();
-
-        return SharedSuggestionProvider.suggest(names, builder);
-    }
-
-    /**
-     * 指令执行逻辑：将执行者传送至目标玩家当前位置。
+     * 指令执行逻辑：将执行者传送至目标玩家当前位置，并分别通知执行者与目标玩家。
      *
      * @param context Brigadier 提供的指令上下文
-     * @return 1 表示传送成功；0 表示目标玩家不在线
-     * @throws CommandSyntaxException 若来源不是玩家（理论上不会发生，requires 已保证）
+     * @return 1 表示传送成功
+     * @throws CommandSyntaxException 目标玩家不在线或选择器匹配到多名玩家时，
+     *                                由 {@link EntityArgument} 内部抛出（含原版本地化错误提示）
      */
     private static int execute(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
         CommandSourceStack source = context.getSource();
@@ -85,22 +60,16 @@ public class TpaCommand {
         // requires() 已保证来源为玩家，此处不会抛出异常
         ServerPlayer executor = source.getPlayerOrException();
 
-        // 从参数读取纯字符串玩家名，不含选择器前缀
-        String targetName = StringArgumentType.getString(context, ARG_PLAYER);
-        ServerPlayer target = source.getServer().getPlayerList().getPlayerByName(targetName);
+        // EntityArgument.getPlayer() 在目标不在线时抛出 CommandSyntaxException，
+        // 原版已提供本地化错误消息，无需自行处理 null 情况
+        ServerPlayer target = EntityArgument.getPlayer(context, ARG_PLAYER);
 
-        if (target == null) {
-            // 目标玩家不在线或名称有误，向执行者发送失败提示（客户端按其语言渲染）
-            source.sendFailure(Component.translatable("aya-server-mod.command.tpa.player_not_found", targetName));
-            return 0;
-        }
-
-        // ServerPlayer.level() 返回值协变为 ServerLevel，无需额外转型
+        // ServerPlayer.level() 协变返回 ServerLevel，无需额外转型
         ServerLevel targetLevel = target.level();
 
         // Set.of() 表示所有坐标均为绝对值（非相对偏移）；
         // 保持执行者当前朝向（yaw / pitch）不变，仅移动坐标；
-        // 最后一个 boolean 参数：true 表示在传送完成后重置镜头（若执行者正在旁观他人）
+        // 最后一个 boolean 参数：true 表示传送完成后重置镜头（应对旁观模式下视角未归位的情况）
         executor.teleportTo(
                 targetLevel,
                 target.getX(), target.getY(), target.getZ(),
@@ -108,6 +77,23 @@ public class TpaCommand {
                 executor.getYRot(), executor.getXRot(),
                 true
         );
+
+        // 通知执行者：复用原版 /tp 的 i18n key（"Teleported %s to %s"）；
+        // sendSuccess 第二个参数 false 表示不向管理员广播此反馈
+        source.sendSuccess(
+                () -> Component.translatable(
+                        "commands.teleport.success.entity.single",
+                        executor.getDisplayName(),
+                        target.getDisplayName()
+                ),
+                false
+        );
+
+        // 通知目标玩家：告知其有人传送至自己位置，使用自定义 i18n key
+        target.sendSystemMessage(
+                Component.translatable("aya-server-mod.command.tpa.notified", executor.getDisplayName())
+        );
+
         return 1;
     }
 }

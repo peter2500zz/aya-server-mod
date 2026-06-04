@@ -160,6 +160,22 @@ source.sendFailure(Component.literal("玩家 " + targetName + " 不在线或不�
 }
 ```
 
+### 优先复用原版 i18n Key
+
+若原版已有语义完全吻合的 key，应直接复用，无需自定义：
+
+```java
+// ✅ 复用原版 /tp 的成功消息
+Component.translatable("commands.teleport.success.entity.single",
+    executor.getDisplayName(), target.getDisplayName())
+
+// ✅ 仅在语义不符时才自定义
+Component.translatable("aya-server-mod.command.tpa.notified", executor.getDisplayName())
+```
+
+原版 lang 文件位于 Minecraft JAR 的 `assets/minecraft/lang/en_us.json`，可通过
+`javap` + `jar xf` 提取查阅，禁止凭记忆推测 key 名。
+
 ### 工作机制说明
 
 `Component.translatable()` 将翻译键通过网络原样发送给客户端，由客户端在本地语言文件中查找对应文本并渲染。客户端需安装本 mod 或服务器下发的资源包，否则客户端将直接显示翻译键本身。
