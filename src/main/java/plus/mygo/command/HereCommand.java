@@ -47,10 +47,10 @@ public class HereCommand {
 
         // MobEffectInstance 参数说明：
         //   amplifier=0     → 效果等级 I（amplifier 从 0 起算，0 即一级）
-        //   ambient=false   → 非来自信标/潮涌核心，粒子显示为实心而非半透明
+        //   ambient=true   → 显示为好看的信标蓝色边框效果代表非自然 Buff
         //   showParticles=false → 不在实体周围显示状态粒子，避免视觉干扰
-        //   showIcon=true   → 在执行者 HUD 右上角状态栏显示效果图标，告知其效果已激活
-        entity.addEffect(new MobEffectInstance(MobEffects.GLOWING, GLOW_DURATION_TICKS, 0, false, false, true));
+        //   showIcon=false   → 隐藏 HUD 图标
+        entity.addEffect(new MobEffectInstance(MobEffects.GLOWING, GLOW_DURATION_TICKS, 0, true, false, false));
         return 1;
     }
 }

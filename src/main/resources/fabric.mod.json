@@ -3,9 +3,9 @@
 	"id": "aya-server-mod",
 	"version": "${version}",
 	"name": "Aya's Server Mod",
-	"description": "纯服务端工具性指令集合。",
+	"description": "Some useful commands for server.",
 	"authors": [
-		"Aya"
+		"peter2500zz"
 	],
 	"license": "CC0-1.0",
 	"icon": "assets/aya-server-mod/icon.png",
