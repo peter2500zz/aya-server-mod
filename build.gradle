@@ -15,15 +15,11 @@ repositories {
 }
 
 loom {
-	splitEnvironmentSourceSets()
-
 	mods {
 		"aya-server-mod" {
 			sourceSet sourceSets.main
-			sourceSet sourceSets.client
 		}
 	}
-
 }
 
 dependencies {
