@@ -27,9 +27,8 @@ public class HereCommand {
     public static void register() {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
             dispatcher.register(Commands.literal("here")
-                // 在 Brigadier 层面限制执行者：仅允许 LivingEntity（含玩家）执行。
-                // 非实体来源（控制台、命令方块自身）将在此被拦截，且无法在 Tab 补全中看到此指令。
-                .requires(source -> source.getEntity() instanceof LivingEntity)
+                // 在 Brigadier 层面限制为玩家：控制台及非玩家实体不可见此指令
+                .requires(CommandSourceStack::isPlayer)
                 .executes(HereCommand::execute)
             )
         );
