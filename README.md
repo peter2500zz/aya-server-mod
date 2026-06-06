@@ -1,9 +1,40 @@
-# Aya&#39;s server management mod
+# aya-server-mod
 
-## Setup
+一个纯服务端的 Fabric 工具性指令模组，为 Minecraft 服务器提供若干实用命令。
 
-For setup instructions, please see the [Fabric Documentation page](https://docs.fabricmc.net/develop/getting-started/creating-a-project#setting-up) related to the IDE that you are using.
+## 环境
 
-## License
+| 项目 | 版本 |
+|------|------|
+| Minecraft | 26.1（Mojang 官方映射） |
+| Fabric Loader | 0.19.3 |
+| Fabric API | 0.145.1+26.1 |
+| Java | 25 |
 
-This template is available under the CC0 license. Feel free to learn from it and incorporate it in your own projects.
+模组功能逻辑全部作用于服务端，但 `environment` 设为 `"*"`，因此在单人、局域网（集成服务器）以及专用服务器中均可正常加载。
+
+> 命令向玩家发送的提示文本通过 i18n 翻译键下发，由客户端本地渲染。客户端需安装本模组或服务器下发的资源包，否则将直接显示翻译键本身。已内置简体中文（`zh_cn`）与英文（`en_us`）。
+
+## 指令列表
+
+| 指令 | 参数 | 执行者 | 说明 |
+|------|------|--------|------|
+| `/here` | 无 | 仅玩家 | 对自身施加 30 秒发光效果（信标风格边框，无 HUD 图标），便于队友定位。 |
+| `/tpa <玩家>` | 目标玩家 | 仅玩家 | 将自己立即传送至目标玩家位置，支持跨维度。补全体验与原版 `/tell` 一致（在线玩家名 + 选择器）。传送后分别私信通知双方（目标为自己时不重复提醒）。 |
+| `/die` | 无 | 仅玩家 | 杀死自己，效果等同于 `kill @s`。 |
+
+## 构建
+
+```bash
+./gradlew build
+```
+
+构建产物位于 `build/libs/` 目录下，将其中的主 JAR 放入服务器的 `mods/` 目录即可。
+
+## 开发规范
+
+本仓库的开发规范（映射规范、命令编写规范、i18n 规范、注释规范、Git 规范等）详见 [`CLAUDE.md`](CLAUDE.md)。
+
+## 许可证
+
+本项目以 CC0-1.0 许可证发布。
