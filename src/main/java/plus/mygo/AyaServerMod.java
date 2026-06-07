@@ -3,6 +3,7 @@ package plus.mygo;
 import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import plus.mygo.command.BackCommand;
 import plus.mygo.command.DieCommand;
 import plus.mygo.command.HatCommand;
 import plus.mygo.command.HereCommand;
@@ -28,6 +29,7 @@ public class AyaServerMod implements ModInitializer {
      */
     @Override
     public void onInitialize() {
+        BackCommand.register();
         DieCommand.register();
         HatCommand.register();
         HereCommand.register();
