@@ -19,7 +19,8 @@ import java.util.Set;
  * 仅限玩家执行。将执行指令的玩家立即传送至目标在线玩家所在位置，支持跨维度传送。
  * 参数使用 {@link EntityArgument#player()}，提供与原版 /tell 完全一致的玩家补全体验
  * （在线玩家名 + @s/@p 等选择器，但因 player() 限制，选择器最终必须解析为恰好一名玩家）。
- * 传送成功后仅通知执行者与目标玩家，不广播至全服。
+ * 传送成功后仅通知执行者与目标玩家（收到相同消息），不广播至全服。
+ * 通知文本复用原版翻译键，因此客户端无需安装本 mod 即可正确显示。
  */
 public class TpaCommand {
 
@@ -78,23 +79,21 @@ public class TpaCommand {
                 true
         );
 
-        // 通知执行者：复用原版 /tp 的 i18n key（"Teleported %s to %s"）；
-        // sendSuccess 第二个参数 false 表示不向管理员广播此反馈
-        source.sendSuccess(
-                () -> Component.translatable(
-                        "commands.teleport.success.entity.single",
-                        executor.getDisplayName(),
-                        target.getDisplayName()
-                ),
-                false
+        // 构造传送通知：复用原版 /tp 的翻译键 "commands.teleport.success.entity.single"
+        //（"Teleported %s to %s"）。该键为原版自带，客户端无需安装本 mod 即可正确渲染，
+        // 并自动跟随客户端语言设置；执行者与目标玩家收到完全相同的消息。
+        Component message = Component.translatable(
+                "commands.teleport.success.entity.single",
+                executor.getDisplayName(),
+                target.getDisplayName()
         );
 
-        // 通知目标玩家：告知其有人传送至自己位置，使用自定义 i18n key；
-        // 若目标与执行者为同一玩家（传送到自身），跳过此通知以避免重复提示
+        // 通知执行者：sendSuccess 第二个参数 false 表示不向其他管理员广播此反馈
+        source.sendSuccess(() -> message, false);
+
+        // 通知目标玩家；若目标与执行者为同一玩家（传送到自身），跳过以避免重复提示
         if (!target.equals(executor)) {
-            target.sendSystemMessage(
-                    Component.translatable("aya-server-mod.command.tpa.notified", executor.getDisplayName())
-            );
+            target.sendSystemMessage(message);
         }
 
         return 1;

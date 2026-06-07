@@ -111,74 +111,42 @@ LivingEntity entity = (LivingEntity) context.getSource().getEntity();
 entity.addEffect(new MobEffectInstance(MobEffects.GLOWING, DURATION_TICKS, 0, false, false, true));
 ```
 
-## i18n 规范
+## 文本输出规范
 
-**所有向玩家输出的字符串必须走 i18n，禁止在 Java 代码中硬编码自然语言文本。**
-必须同时提供简体中文（`zh_cn`）和英文（`en_us`）两种语言，且两者保持同步。
+本模组为纯服务端 mod，**不假定客户端安装了本 mod**。因此向玩家输出文本时，**只复用原版自带的翻译键，不自定义 i18n key、不维护 lang 文件。**
 
-### 文件位置
+### 工作机制
 
-```
-src/main/resources/assets/aya-server-mod/lang/
-├── en_us.json    # 英文（必须）
-└── zh_cn.json    # 简体中文（必须）
-```
+`Component.translatable(key, args...)` 将翻译键原样发送给客户端，由客户端在其本地语言文件中查找并渲染。
 
-### Translation Key 命名规范
-
-格式：`aya-server-mod.command.<命令名>.<消息类型>`
-
-示例：
-```
-aya-server-mod.command.tpa.player_not_found
-aya-server-mod.command.xxx.success
-aya-server-mod.command.xxx.error_no_permission
-```
-
-- 全部小写，单词间用下划线分隔。
-- `<命令名>` 与指令名称一致（如 `tpa`、`here`）。
-- `<消息类型>` 描述消息语义，而非内容（如 `player_not_found` 而非 `player_offline_message`）。
+- 原版自带的 key（如 `commands.teleport.success.entity.single`）存在于所有 vanilla 客户端，因此**无论客户端是否安装本 mod 都能正确显示，且自动跟随客户端语言**。
+- 自定义 key（如 `aya-server-mod.command.xxx`）只存在于本 mod 的 lang 文件中，未安装本 mod 的客户端会**原样显示键名**而非文本。纯服务端 mod 无法保证客户端安装，故**禁止使用自定义 key**。
 
 ### 代码使用方式
 
-所有向玩家发送的文本必须通过 `Component.translatable()` 构建，禁止使用 `Component.literal()` 传递自然语言：
+优先复用语义吻合的原版翻译键：
 
 ```java
-// ✅ 正确
-source.sendFailure(Component.translatable("aya-server-mod.command.tpa.player_not_found", targetName));
-
-// ❌ 错误：硬编码字符串
-source.sendFailure(Component.literal("玩家 " + targetName + " 不在线或不存在。"));
-```
-
-带参数的字符串在 lang 文件中使用 `%s`（字符串）或 `%d`（整数）作为占位符；
-多个参数时使用 `%1$s`、`%2$s` 明确位置：
-
-```json
-{
-  "aya-server-mod.command.tpa.player_not_found": "Player %s is not online or does not exist."
-}
-```
-
-### 优先复用原版 i18n Key
-
-若原版已有语义完全吻合的 key，应直接复用，无需自定义：
-
-```java
-// ✅ 复用原版 /tp 的成功消息
+// ✅ 复用原版 /tp 的成功消息，任何客户端都能渲染
 Component.translatable("commands.teleport.success.entity.single",
     executor.getDisplayName(), target.getDisplayName())
-
-// ✅ 仅在语义不符时才自定义
-Component.translatable("aya-server-mod.command.tpa.notified", executor.getDisplayName())
 ```
 
 原版 lang 文件位于 Minecraft JAR 的 `assets/minecraft/lang/en_us.json`，可通过
-`javap` + `jar xf` 提取查阅，禁止凭记忆推测 key 名。
+`jar xf` 提取查阅，**禁止凭记忆推测 key 名**。
 
-### 工作机制说明
+### 无对应原版 key 时
 
-`Component.translatable()` 将翻译键通过网络原样发送给客户端，由客户端在本地语言文件中查找对应文本并渲染。客户端需安装本 mod 或服务器下发的资源包，否则客户端将直接显示翻译键本身。
+若确实找不到语义吻合的原版 key，使用 `Component.literal()` 硬编码**简体中文**字面文本
+（literal 文本原样发送，不经客户端翻译，因此无客户端依赖）：
+
+```java
+source.sendSuccess(() -> Component.literal("……"), false);
+```
+
+- 拼接玩家名等动态内容时，使用 `MutableComponent.append(Component)` 而非字符串拼接，
+  以保留对方显示名的格式（队伍颜色、悬停信息）。
+- 原版命令参数（如 `EntityArgument`）自带的错误提示属于原版行为，保持原样，无需干预。
 
 ## Git 规范
 
@@ -195,5 +163,4 @@ Component.translatable("aya-server-mod.command.tpa.notified", executor.getDispla
 - 禁止凭推理猜测 API —— 必须查阅对应版本文档或源码。
 - 禁止为假设性未来需求添加抽象层或冗余逻辑。
 - 禁止省略注释或使用英文注释（代码标识符除外）。
-- 禁止在 Java 代码中硬编码自然语言字符串（中文或英文）——必须走 i18n。
-- 禁止只更新一种语言的 lang 文件；每次修改必须同时更新 `en_us.json` 和 `zh_cn.json`。
+- 禁止自定义 i18n key 或维护 lang 文件——纯服务端 mod 不保证客户端安装，自定义 key 会在客户端显示为键名。只复用原版 key，无对应 key 时用 `Component.literal` 硬编码中文。
