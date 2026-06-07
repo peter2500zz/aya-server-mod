@@ -7,6 +7,7 @@ import plus.mygo.command.BackCommand;
 import plus.mygo.command.DieCommand;
 import plus.mygo.command.HatCommand;
 import plus.mygo.command.HereCommand;
+import plus.mygo.command.HomeCommand;
 import plus.mygo.command.TpaCommand;
 
 /**
@@ -33,6 +34,7 @@ public class AyaServerMod implements ModInitializer {
         DieCommand.register();
         HatCommand.register();
         HereCommand.register();
+        HomeCommand.register();
         TpaCommand.register();
     }
 }
