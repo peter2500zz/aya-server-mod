@@ -35,7 +35,7 @@ public class HatCommand {
      * 指令执行逻辑：对调执行者的主手与头部槽物品。
      * <p>
      * {@code getItemBySlot} / {@code setItemSlot} 是 {@code LivingEntity} 操作装备槽的标准高层接口；
-     * 在 26.1 中玩家的 {@code Inventory} 与 {@code LivingEntity} 共用同一个 {@code EntityEquipment}，
+     * 在 26.2 中玩家的 {@code Inventory} 与 {@code LivingEntity} 共用同一个 {@code EntityEquipment}，
      * 因此对玩家 MAINHAND / HEAD 槽的读写均即时生效，无需直接操作物品栏内部结构。
      *
      * @param context Brigadier 提供的指令上下文

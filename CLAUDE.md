@@ -2,8 +2,8 @@
 
 ## 环境
 
-- Minecraft 26.1（Mojang 官方映射，已去混淆，**不使用 Yarn**）
-- Fabric Loader 0.19.3 / Fabric API 0.145.1+26.1 / Loom 1.16
+- Minecraft 26.2（Mojang 官方映射，已去混淆，**不使用 Yarn**）
+- Fabric Loader 0.19.3 / Fabric API 0.152.1+26.2 / Loom 1.16
 - Java 25
 
 ## 映射规范

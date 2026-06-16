@@ -6,9 +6,9 @@
 
 | 项目 | 版本 |
 |------|------|
-| Minecraft | 26.1（Mojang 官方映射） |
+| Minecraft | 26.2（Mojang 官方映射） |
 | Fabric Loader | 0.19.3 |
-| Fabric API | 0.145.1+26.1 |
+| Fabric API | 0.152.1+26.2 |
 | Java | 25 |
 
 模组功能逻辑全部作用于服务端，但 `environment` 设为 `"*"`，因此在单人、局域网（集成服务器）以及专用服务器中均可正常加载。
