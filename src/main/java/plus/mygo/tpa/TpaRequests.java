@@ -23,8 +23,11 @@ import java.util.UUID;
  * /tpa 传送请求的登记处与计时器。
  * <p>
  * 承载 {@code /tpa}、{@code /confirm}、{@code /deny}、{@code /cancel} 四条指令共用的状态与逻辑：
- * 发起请求、接受、拒绝、撤销，以及超时自动接受。指令类只负责参数解析与「无待处理请求」时的提示，
+ * 发起请求、接受、拒绝、撤销，以及超时失效。指令类只负责参数解析与「无待处理请求」时的提示，
  * 请求流程本身的全部消息由本类发出。
+ * <p>
+ * <b>只有目标明确接受才会传送。</b>请求必须在 {@link #TIMEOUT_SECONDS} 秒内被接受，
+ * 逾期即失效并通知双方，不执行传送。
  * <p>
  * <b>并发约束。</b>同一时刻：
  * <ul>
@@ -45,14 +48,11 @@ import java.util.UUID;
  * 服务器重启后自然清空。请求最长仅存活 {@link #TIMEOUT_SECONDS} 秒，
  * 且任一方离线时立即清理，因此不存在需要持久化的场景。
  * 后续维护本类时必须保持这一点：<b>不得为「重启后恢复未完成的请求」之类的需求引入任何持久化</b>。
- * <p>
- * <b>注意。</b>按需求设定，超时的处理是<b>自动接受</b>而非自动拒绝：目标在
- * {@link #TIMEOUT_SECONDS} 秒内未回应，请求即被视为同意并执行传送。
  */
 public final class TpaRequests {
 
-    /** 请求超时时长（秒），同时用于向玩家展示。 */
-    public static final int TIMEOUT_SECONDS = 10;
+    /** 请求的回应窗口（秒）：目标须在此时限内接受，逾期请求失效。同时用于向玩家展示。 */
+    public static final int TIMEOUT_SECONDS = 30;
 
     /** 请求超时时长，换算为游戏刻（1 秒 = 20 刻）。 */
     private static final int TIMEOUT_TICKS = TIMEOUT_SECONDS * 20;
@@ -78,11 +78,11 @@ public final class TpaRequests {
     /** 目标主动接受后，给目标自己的提示文本翻译键。 */
     private static final String KEY_ACCEPTED_TARGET = "aya-server-mod.command.tpa.accepted.target";
 
-    /** 超时自动接受后，给发起者的提示文本翻译键。 */
-    private static final String KEY_AUTO_ACCEPTED_REQUESTER = "aya-server-mod.command.tpa.auto_accepted.requester";
+    /** 请求超时失效后，给发起者的提示文本翻译键。 */
+    private static final String KEY_EXPIRED_REQUESTER = "aya-server-mod.command.tpa.expired.requester";
 
-    /** 超时自动接受后，给目标的提示文本翻译键。 */
-    private static final String KEY_AUTO_ACCEPTED_TARGET = "aya-server-mod.command.tpa.auto_accepted.target";
+    /** 请求超时失效后，给目标的提示文本翻译键。 */
+    private static final String KEY_EXPIRED_TARGET = "aya-server-mod.command.tpa.expired.target";
 
     /** 被拒绝（未附原因）时，给发起者的提示文本翻译键。 */
     private static final String KEY_DENIED_REQUESTER = "aya-server-mod.command.tpa.denied.requester";
@@ -208,7 +208,7 @@ public final class TpaRequests {
         if (request == null) {
             return 0;
         }
-        complete(target, request, false);
+        complete(target, request);
         return 1;
     }
 
@@ -310,20 +310,36 @@ public final class TpaRequests {
             ServerPlayer target = server.getPlayerList().getPlayer(entry.getKey());
             // 上面刚校验过双方在线，此处判空仅为防御
             if (target != null) {
-                complete(target, entry.getValue(), true);
+                expire(target, entry.getValue());
             }
         }
     }
 
     /**
-     * 执行传送并通知双方。{@code /confirm} 与超时自动接受共用此逻辑。
+     * 处理一条超时失效的请求：<b>不执行传送</b>，仅告知双方请求已作废。
      *
-     * @param target    目标玩家，发起者将被传送到它所在位置
-     * @param request   已从 {@link #PENDING} 中摘除的请求
-     * @param automatic {@code true} 表示因超时自动接受，{@code false} 表示目标主动接受；
-     *                  两者发送的提示文案不同
+     * @param target  目标玩家，即未在期限内回应的一方
+     * @param request 已从 {@link #PENDING} 中摘除的请求
      */
-    private static void complete(ServerPlayer target, PendingRequest request, boolean automatic) {
+    private static void expire(ServerPlayer target, PendingRequest request) {
+        Messages.send(target, KEY_EXPIRED_TARGET,
+                String.valueOf(TIMEOUT_SECONDS), displayNameOf(target, request.requesterId));
+
+        // 发起者可能已离线，此时无须通知
+        ServerPlayer requester = resolve(target, request.requesterId);
+        if (requester != null) {
+            Messages.send(requester, KEY_EXPIRED_REQUESTER,
+                    target.getDisplayName(), String.valueOf(TIMEOUT_SECONDS));
+        }
+    }
+
+    /**
+     * 目标接受请求后：执行传送并通知双方。
+     *
+     * @param target  目标玩家，发起者将被传送到它所在位置
+     * @param request 已从 {@link #PENDING} 中摘除的请求
+     */
+    private static void complete(ServerPlayer target, PendingRequest request) {
         ServerPlayer requester = resolve(target, request.requesterId);
         if (requester == null) {
             // 发起者已离线，传送无从谈起，仅告知目标
@@ -344,15 +360,8 @@ public final class TpaRequests {
                 true
         );
 
-        if (automatic) {
-            Messages.send(requester, KEY_AUTO_ACCEPTED_REQUESTER,
-                    target.getDisplayName(), String.valueOf(TIMEOUT_SECONDS));
-            Messages.send(target, KEY_AUTO_ACCEPTED_TARGET,
-                    String.valueOf(TIMEOUT_SECONDS), requester.getDisplayName());
-        } else {
-            Messages.send(requester, KEY_ACCEPTED_REQUESTER, target.getDisplayName());
-            Messages.send(target, KEY_ACCEPTED_TARGET, requester.getDisplayName());
-        }
+        Messages.send(requester, KEY_ACCEPTED_REQUESTER, target.getDisplayName());
+        Messages.send(target, KEY_ACCEPTED_TARGET, requester.getDisplayName());
     }
 
     /**
