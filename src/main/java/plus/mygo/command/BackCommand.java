@@ -7,9 +7,9 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import plus.mygo.i18n.Messages;
 
 import java.util.Optional;
 import java.util.Set;
@@ -19,9 +19,18 @@ import java.util.Set;
  * <p>
  * 仅限玩家执行，无参数。将执行者传送回其上一次死亡的地点（含维度，支持跨维度）。
  * 死亡地点由原版自动记录在玩家数据中（last death location，亦用于恢复指南针指向）：
- * 若玩家从未死亡、或死亡所在维度已不存在，则命令无效——不传送、不输出任何文本。
+ * 若玩家从未死亡、或死亡所在维度已不存在，则不传送并给出对应的失败提示。
  */
 public class BackCommand {
+
+    /** 传送成功后的提示文本翻译键，参数为死亡点的 x / y / z 方块坐标。 */
+    private static final String KEY_SUCCESS = "aya-server-mod.command.back.success";
+
+    /** 玩家从未死亡时的提示文本翻译键。 */
+    private static final String KEY_NO_DEATH = "aya-server-mod.command.back.no_death";
+
+    /** 死亡地点所在维度已不存在时的提示文本翻译键。 */
+    private static final String KEY_DIMENSION_MISSING = "aya-server-mod.command.back.dimension_missing";
 
     /**
      * 向 Fabric 命令系统注册 /back 指令。
@@ -54,7 +63,8 @@ public class BackCommand {
         // 玩家从未死亡时为空
         Optional<GlobalPos> lastDeath = player.getLastDeathLocation();
         if (lastDeath.isEmpty()) {
-            // 无死亡记录：命令无效，不传送、不输出文本
+            // 无死亡记录：不传送，并明确告知原因（静默失败会让玩家误以为指令损坏）
+            Messages.sendFailure(source, KEY_NO_DEATH);
             return 0;
         }
 
@@ -64,6 +74,7 @@ public class BackCommand {
         // 若该维度已不存在（如被移除的自定义维度），getLevel 返回 null，则无法传送
         ServerLevel targetLevel = source.getServer().getLevel(deathPos.dimension());
         if (targetLevel == null) {
+            Messages.sendFailure(source, KEY_DIMENSION_MISSING);
             return 0;
         }
 
@@ -81,19 +92,12 @@ public class BackCommand {
                 true
         );
 
-        // 复用原版 /tp 传送至坐标的成功消息键 "commands.teleport.success.location.single"
-        //（"Teleported %s to %s, %s, %s"），打印死亡点的方块坐标。
-        // 该键为原版自带，客户端无需安装本 mod 即可正确渲染
-        source.sendSuccess(
-                () -> Component.translatable(
-                        "commands.teleport.success.location.single",
-                        player.getDisplayName(),
-                        String.valueOf(pos.getX()),
-                        String.valueOf(pos.getY()),
-                        String.valueOf(pos.getZ())
-                ),
-                false
-        );
+        // 回执死亡点的方块坐标（整数，无需格式化）。
+        // 坐标按约定转成 String 传参：可变参数会随消息过网络序列化，只应传 String 或 Component
+        Messages.sendSuccess(source, KEY_SUCCESS,
+                String.valueOf(pos.getX()),
+                String.valueOf(pos.getY()),
+                String.valueOf(pos.getZ()));
 
         return 1;
     }

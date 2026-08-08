@@ -37,8 +37,11 @@ Minecraft 26.1 起使用 Mojang 官方类名，**禁止使用 Yarn 映射名**�
 ```
 src/main/java/plus/mygo/
 ├── AyaServerMod.java      # 主入口，仅负责调用各命令的 register()
-└── command/
-    └── XxxCommand.java    # 每条命令一个类
+├── command/
+│   └── XxxCommand.java    # 每条命令一个类
+└── i18n/
+    ├── ServerLanguage.java  # 服务端翻译表：加载内置 lang 文件、按语言查表
+    └── Messages.java        # 消息门面：构造带 fallback 的文本并发送
 ```
 
 - 每条命令独立一个类，放在 `plus.mygo.command` 包下。
@@ -51,7 +54,10 @@ src/main/java/plus/mygo/
 ## 命令编写规范
 
 - 使用 `.requires()` 在 Brigadier 层面限制执行者，而非在执行逻辑中抛出异常。
-- 仅限实体执行的命令：`.requires(source -> source.getEntity() instanceof LivingEntity)`。
+- 仅限玩家执行的命令：`.requires(CommandSourceStack::isPlayer)`，随后用 `getPlayerOrException()` 取玩家。
+- 仅限生物实体执行的命令：`.requires(source -> source.getEntity() instanceof LivingEntity)`。
+- 注意 `requires()` 在 **Brigadier 解析期**用**原始来源**判定，因此 `/execute as <玩家> run <玩家专属命令>`
+  从控制台执行会解析失败（控制台 `isPlayer()` 为 false）。这是原版既定行为，非缺陷，不要为此放宽 `requires`。
 - tick 换算：`秒数 * 20`，常量用具名 `static final int` 声明。
 - 命令执行成功返回 `1`，失败返回 `0`。
 
@@ -113,40 +119,67 @@ entity.addEffect(new MobEffectInstance(MobEffects.GLOWING, DURATION_TICKS, 0, fa
 
 ## 文本输出规范
 
-本模组为纯服务端 mod，**不假定客户端安装了本 mod**。因此向玩家输出文本时，**只复用原版自带的翻译键，不自定义 i18n key、不维护 lang 文件。**
+本模组为纯服务端 mod，**不假定客户端安装了本 mod**。所有面向玩家的文本一律通过
+`plus.mygo.i18n.Messages` 发出，**调用处只写翻译键，不写字面文本**。
 
-### 工作机制
+### 工作机制：服务端查表 + fallback
 
-`Component.translatable(key, args...)` 将翻译键原样发送给客户端，由客户端在其本地语言文件中查找并渲染。
+`Component.translatableWithFallback(key, fallback, args...)` 会把「翻译键 + 兜底文本」一并下发。
+客户端渲染时：能查到 key 就用自己的翻译，查不到就渲染 fallback。
 
-- 原版自带的 key（如 `commands.teleport.success.entity.single`）存在于所有 vanilla 客户端，因此**无论客户端是否安装本 mod 都能正确显示，且自动跟随客户端语言**。
-- 自定义 key（如 `aya-server-mod.command.xxx`）只存在于本 mod 的 lang 文件中，未安装本 mod 的客户端会**原样显示键名**而非文本。纯服务端 mod 无法保证客户端安装，故**禁止使用自定义 key**。
+据此，`Messages` 在发送前按**接收方玩家的客户端语言**从服务端内置语言表里查出文本充当 fallback：
+
+| 客户端情况 | 渲染结果 |
+|-----------|---------|
+| 未安装本 mod | 显示 fallback —— 而 fallback 已按该玩家的语言选好，**显示正确且语言匹配** |
+| 安装了本 mod / 同名资源包 | 查到 key，用客户端自己的翻译渲染，玩家可用资源包自定义文案 |
+
+关键前提（已用 26.2 字节码确认）：原版对**翻译文本与 fallback 文本走同一套 `decomposeTemplate`**，
+因此 `%s` 占位符替换对 fallback 同样生效，参数可照常传递。
+
+### 语言文件
+
+路径固定为 `src/main/resources/assets/aya-server-mod/lang/<语言代码>.json`（标准资源包路径，
+一份文件同时供服务端查表与客户端资源系统使用）。
+
+- **必须完整维护 `en_us` 与 `zh_cn` 两份**，键集保持一致。
+- `en_us` 是兜底语言：玩家语言未收录时（如 `ja_jp`）回退到英文。
+- 新增语言需在 `ServerLanguage.BUNDLED_LANGUAGES` 中登记。
+- 启动时 `ServerLanguage` 会以 `en_us` 为基准校验其余语言的键完整性，缺键按 WARN 记录。
+
+### 键名规范
+
+`aya-server-mod.command.<命令名>.<用途>`，例如：
+
+```
+aya-server-mod.command.tpa.success.self
+aya-server-mod.command.back.no_death
+```
+
+每个键在使用它的命令类中声明为具名 `private static final String KEY_XXX` 常量，禁止在调用处写裸字符串。
 
 ### 代码使用方式
 
-优先复用语义吻合的原版翻译键：
-
 ```java
-// ✅ 复用原版 /tp 的成功消息，任何客户端都能渲染
-Component.translatable("commands.teleport.success.entity.single",
-    executor.getDisplayName(), target.getDisplayName())
+// 给指令执行者的成功回执
+Messages.sendSuccess(source, KEY_SUCCESS, target.getDisplayName());
+
+// 给指令执行者的失败提示（原版渲染为红色）
+Messages.sendFailure(source, KEY_NO_DEATH);
+
+// 给执行者以外的玩家发消息，按【该玩家自己的】语言渲染
+Messages.send(target, KEY_SUCCESS_TARGET, executor.getDisplayName());
 ```
 
-原版 lang 文件位于 Minecraft JAR 的 `assets/minecraft/lang/en_us.json`，可通过
-`jar xf` 提取查阅，**禁止凭记忆推测 key 名**。
+**参数约定**：可变参数会随消息过网络序列化，只应传 `String` 或 `Component` ——
+数字先自行格式化成字符串（浮点数用 `String.format(Locale.ROOT, "%.2f", v)` 固定小数点格式），
+玩家名传 `getDisplayName()` 以保留队伍颜色与悬停信息。
 
-### 无对应原版 key 时
+### 例外
 
-若确实找不到语义吻合的原版 key，使用 `Component.literal()` 硬编码**简体中文**字面文本
-（literal 文本原样发送，不经客户端翻译，因此无客户端依赖）：
-
-```java
-source.sendSuccess(() -> Component.literal("……"), false);
-```
-
-- 拼接玩家名等动态内容时，使用 `MutableComponent.append(Component)` 而非字符串拼接，
-  以保留对方显示名的格式（队伍颜色、悬停信息）。
 - 原版命令参数（如 `EntityArgument`）自带的错误提示属于原版行为，保持原样，无需干预。
+- 仍可直接复用语义完全吻合的原版翻译键，但**不得凭记忆推测键名**：原版 lang 文件位于
+  Minecraft JAR 的 `assets/minecraft/lang/en_us.json`，须 `jar xf` 提取查阅后使用。
 
 ## Git 规范
 
@@ -163,4 +196,6 @@ source.sendSuccess(() -> Component.literal("……"), false);
 - 禁止凭推理猜测 API —— 必须查阅对应版本文档或源码。
 - 禁止为假设性未来需求添加抽象层或冗余逻辑。
 - 禁止省略注释或使用英文注释（代码标识符除外）。
-- 禁止自定义 i18n key 或维护 lang 文件——纯服务端 mod 不保证客户端安装，自定义 key 会在客户端显示为键名。只复用原版 key，无对应 key 时用 `Component.literal` 硬编码中文。
+- 禁止在命令类中直接调用 `sendSuccess` / `sendFailure` / `sendSystemMessage` 发送自造文本 ——
+  一律经由 `Messages`，否则会绕过服务端查表，未装本 mod 的客户端将看到裸露的翻译键。
+- 禁止只补一种语言的 lang 文件：`en_us` 与 `zh_cn` 必须同步增删，保持键集一致。

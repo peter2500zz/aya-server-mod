@@ -1,0 +1,14 @@
+{
+  "aya-server-mod.command.here.success": "已高亮你的位置，持续 %s 秒。",
+
+  "aya-server-mod.command.tpa.success.self": "已传送到 %s 身边。",
+  "aya-server-mod.command.tpa.success.target": "%s 传送到了你身边。",
+
+  "aya-server-mod.command.back.success": "已传送回上次死亡地点 %s, %s, %s。",
+  "aya-server-mod.command.back.no_death": "你还没有死亡记录。",
+  "aya-server-mod.command.back.dimension_missing": "上次死亡所在的维度已不存在。",
+
+  "aya-server-mod.command.home.success": "已传送回重生点 %s, %s, %s。",
+  "aya-server-mod.command.home.not_set": "你还没有设置重生点。",
+  "aya-server-mod.command.home.obstructed": "你的重生点已被破坏或阻挡。"
+}

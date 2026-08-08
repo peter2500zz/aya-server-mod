@@ -6,10 +6,9 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.EntityArgument;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.Relative;
+import plus.mygo.i18n.Messages;
 
 import java.util.Set;
 
@@ -19,13 +18,19 @@ import java.util.Set;
  * 仅限玩家执行。将执行指令的玩家立即传送至目标在线玩家所在位置，支持跨维度传送。
  * 参数使用 {@link EntityArgument#player()}，提供与原版 /tell 完全一致的玩家补全体验
  * （在线玩家名 + @s/@p 等选择器，但因 player() 限制，选择器最终必须解析为恰好一名玩家）。
- * 传送成功后仅通知执行者与目标玩家（收到相同消息），不广播至全服。
- * 通知文本复用原版翻译键，因此客户端无需安装本 mod 即可正确显示。
+ * 传送成功后仅通知执行者与目标玩家，双方各收到一条视角不同的消息，不广播至全服。
+ * 通知经 {@link Messages} 发送，各自按其客户端语言渲染，客户端无需安装本 mod。
  */
 public class TpaCommand {
 
     /** 指令参数名，用于从 CommandContext 中按名称读取参数值。 */
     private static final String ARG_PLAYER = "player";
+
+    /** 传送成功后给执行者的提示文本翻译键，参数为目标玩家显示名。 */
+    private static final String KEY_SUCCESS_SELF = "aya-server-mod.command.tpa.success.self";
+
+    /** 传送成功后给目标玩家的提示文本翻译键，参数为执行者显示名。 */
+    private static final String KEY_SUCCESS_TARGET = "aya-server-mod.command.tpa.success.target";
 
     /**
      * 向 Fabric 命令系统注册 /tpa 指令。
@@ -79,21 +84,15 @@ public class TpaCommand {
                 true
         );
 
-        // 构造传送通知：复用原版 /tp 的翻译键 "commands.teleport.success.entity.single"
-        //（"Teleported %s to %s"）。该键为原版自带，客户端无需安装本 mod 即可正确渲染，
-        // 并自动跟随客户端语言设置；执行者与目标玩家收到完全相同的消息。
-        Component message = Component.translatable(
-                "commands.teleport.success.entity.single",
-                executor.getDisplayName(),
-                target.getDisplayName()
-        );
+        // 通知执行者：「已传送到 <目标> 身边」。
+        // 传玩家显示名（Component）而非字符串，以保留队伍颜色与悬停信息
+        Messages.sendSuccess(source, KEY_SUCCESS_SELF, target.getDisplayName());
 
-        // 通知执行者：sendSuccess 第二个参数 false 表示不向其他管理员广播此反馈
-        source.sendSuccess(() -> message, false);
-
-        // 通知目标玩家；若目标与执行者为同一玩家（传送到自身），跳过以避免重复提示
+        // 通知目标玩家：「<执行者> 传送到了你身边」。
+        // 该消息按目标玩家自己的客户端语言渲染，与执行者的语言无关。
+        // 若目标与执行者为同一玩家（传送到自身），跳过以避免自己收到"某人传送到了你身边"
         if (!target.equals(executor)) {
-            target.sendSystemMessage(message);
+            Messages.send(target, KEY_SUCCESS_TARGET, executor.getDisplayName());
         }
 
         return 1;

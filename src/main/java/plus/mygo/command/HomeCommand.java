@@ -5,11 +5,11 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.portal.TeleportTransition;
 import net.minecraft.world.phys.Vec3;
+import plus.mygo.i18n.Messages;
 
 import java.util.Locale;
 import java.util.Set;
@@ -22,10 +22,19 @@ import java.util.Set;
  * 该方法内部按重生方块类型分派到床 / 重生锚各自的站立点查找算法。
  * <p>
  * 若玩家从未设置重生点，或床 / 重生锚已被破坏、被遮挡、（重生锚）无充能，则命令无效：
- * 不传送，并发送原版"重生点不可用"提示；否则传送并输出原版传送成功消息。
+ * 不传送，并按具体原因发送对应提示；否则传送并回执目标坐标。
  * 查找时传入 {@code useCharge=false}，因此不消耗重生锚充能，{@code /home} 可反复使用。
  */
 public class HomeCommand {
+
+    /** 传送成功后的提示文本翻译键，参数为重生点的 x / y / z 坐标。 */
+    private static final String KEY_SUCCESS = "aya-server-mod.command.home.success";
+
+    /** 玩家从未设置重生点时的提示文本翻译键。 */
+    private static final String KEY_NOT_SET = "aya-server-mod.command.home.not_set";
+
+    /** 重生方块已被破坏、被遮挡或重生锚无充能时的提示文本翻译键。 */
+    private static final String KEY_OBSTRUCTED = "aya-server-mod.command.home.obstructed";
 
     /**
      * 向 Fabric 命令系统注册 /home 指令。
@@ -54,6 +63,14 @@ public class HomeCommand {
         // requires() 已保证来源为玩家，此处不会抛出异常
         ServerPlayer player = source.getPlayerOrException();
 
+        // 先判断玩家是否设置过重生点。未设置时原版查找逻辑会回退到世界出生点，
+        // 而 /home 的语义是"回自己的家"，不应把人送到世界出生点，故在此直接拒绝，
+        // 顺带省去一次无谓的重生点查找。
+        if (player.getRespawnConfig() == null) {
+            Messages.sendFailure(source, KEY_NOT_SET);
+            return 0;
+        }
+
         // 复用原版复活坐标查找逻辑：
         //   useCharge=false → 仅查找坐标、不消耗重生锚充能，使 /home 可反复使用；
         //   DO_NOTHING      → 传送后不附加额外行为（不播放传送门音效等）。
@@ -61,12 +78,9 @@ public class HomeCommand {
         TeleportTransition transition =
                 player.findRespawnPositionAndUseSpawnBlock(false, TeleportTransition.DO_NOTHING);
 
-        // 判定重生点是否可用：
-        //   getRespawnConfig() == null       → 玩家从未设置过重生点（此时上面会回退到世界出生点）；
-        //   transition.missingRespawnBlock() → 床 / 重生锚已被破坏、被遮挡，或重生锚无充能。
-        // 两种情况均视为无效：不传送，发送原版"重生点不可用"提示（该键涵盖"无重生点 / 被阻挡"两义）。
-        if (player.getRespawnConfig() == null || transition.missingRespawnBlock()) {
-            source.sendFailure(Component.translatable("block.minecraft.spawn.not_valid"));
+        // 重生方块已被破坏、被遮挡，或重生锚无充能：坐标不可用，不传送
+        if (transition.missingRespawnBlock()) {
+            Messages.sendFailure(source, KEY_OBSTRUCTED);
             return 0;
         }
 
@@ -83,19 +97,12 @@ public class HomeCommand {
                 true
         );
 
-        // 复用原版 /tp 传送至坐标的成功消息键 "commands.teleport.success.location.single"
-        //（"Teleported %s to %s, %s, %s"）。坐标用 Locale.ROOT 固定小数点格式、保留两位小数，
-        // 避免在使用逗号作小数点的客户端语言下显示异常
-        source.sendSuccess(
-                () -> Component.translatable(
-                        "commands.teleport.success.location.single",
-                        player.getDisplayName(),
-                        String.format(Locale.ROOT, "%.2f", pos.x),
-                        String.format(Locale.ROOT, "%.2f", pos.y),
-                        String.format(Locale.ROOT, "%.2f", pos.z)
-                ),
-                false
-        );
+        // 回执重生点坐标。坐标为浮点数，用 Locale.ROOT 固定小数点格式并保留两位小数，
+        // 避免在服务器默认区域设置使用逗号作小数点时格式化出 "12,50" 这类文本
+        Messages.sendSuccess(source, KEY_SUCCESS,
+                String.format(Locale.ROOT, "%.2f", pos.x),
+                String.format(Locale.ROOT, "%.2f", pos.y),
+                String.format(Locale.ROOT, "%.2f", pos.z));
 
         return 1;
     }

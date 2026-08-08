@@ -1,0 +1,14 @@
+{
+  "aya-server-mod.command.here.success": "Your location has been highlighted for %s seconds.",
+
+  "aya-server-mod.command.tpa.success.self": "Teleported to %s.",
+  "aya-server-mod.command.tpa.success.target": "%s teleported to you.",
+
+  "aya-server-mod.command.back.success": "Teleported back to your last death location at %s, %s, %s.",
+  "aya-server-mod.command.back.no_death": "You have no recorded death location.",
+  "aya-server-mod.command.back.dimension_missing": "The dimension of your last death no longer exists.",
+
+  "aya-server-mod.command.home.success": "Teleported back to your respawn point at %s, %s, %s.",
+  "aya-server-mod.command.home.not_set": "You have not set a respawn point yet.",
+  "aya-server-mod.command.home.obstructed": "Your respawn point is missing or obstructed."
+}
