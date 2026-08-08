@@ -17,11 +17,11 @@ import plus.mygo.i18n.Messages;
  * 使其对周围玩家可见，包括透过方块。
  * 仅限玩家执行：非玩家来源执行时会收到原版的「需要玩家身份」提示。
  * <p>
- * 玩家在第一人称下看不到自己的发光轮廓，故额外发送一条确认消息告知效果已生效及其时长。
+ * 玩家在第一人称下看不到自己的发光轮廓，故额外发送一条确认消息告知效果已生效。
  */
 public class HereCommand {
 
-    /** 发光效果持续时长（秒），同时用于向玩家展示。 */
+    /** 发光效果持续时长（秒），仅用于换算游戏刻，不出现在提示文本中。 */
     private static final int GLOW_DURATION_SECONDS = 30;
 
     /** 发光效果持续时长，换算为游戏刻（1 秒 = 20 刻）。 */
@@ -66,8 +66,7 @@ public class HereCommand {
         //   showIcon=false   → 隐藏 HUD 图标
         player.addEffect(new MobEffectInstance(MobEffects.GLOWING, GLOW_DURATION_TICKS, 0, true, false, false));
 
-        // 秒数按约定转成 String 传参：可变参数会随消息过网络序列化，只应传 String 或 Component
-        Messages.sendSuccess(source, KEY_SUCCESS, String.valueOf(GLOW_DURATION_SECONDS));
+        Messages.sendSuccess(source, KEY_SUCCESS);
 
         return 1;
     }

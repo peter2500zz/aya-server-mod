@@ -167,15 +167,21 @@ public final class TpaRequests {
             return 0;
         }
 
-        // 目标已有待处理请求：拒绝新请求，且不打扰目标（否则会被请求轰炸）
-        if (PENDING.containsKey(target.getUUID())) {
-            Messages.send(requester, KEY_TARGET_BUSY, target.getDisplayName());
+        // 先查发起者自己是否已有在途请求：拒绝，否则无参的 /cancel 将无从判断该撤销哪一条。
+        // 附【撤销】按钮，让玩家可以就地撤掉旧请求后重发。
+        //
+        // 此检查必须排在「目标是否忙」之前：否则玩家对同一目标重复发送时会命中 target_busy，
+        // 被告知「对方正忙」—— 而那条占用请求恰恰是他自己发的，提示驴唇不对马嘴，
+        // 也拿不到撤销按钮。
+        if (findByRequester(requester.getUUID()) != null) {
+            Messages.send(requester, KEY_ALREADY_PENDING,
+                    button(requester, KEY_BUTTON_CANCEL, "/cancel", ChatFormatting.GRAY));
             return 0;
         }
 
-        // 发起者已有在途请求：拒绝，否则无参的 /cancel 将无从判断该撤销哪一条
-        if (findByRequester(requester.getUUID()) != null) {
-            Messages.send(requester, KEY_ALREADY_PENDING);
+        // 目标已被别人的请求占用：拒绝新请求，且不打扰目标（否则会被请求轰炸）
+        if (PENDING.containsKey(target.getUUID())) {
+            Messages.send(requester, KEY_TARGET_BUSY, target.getDisplayName());
             return 0;
         }
 
@@ -184,13 +190,11 @@ public final class TpaRequests {
         // 给发起者的回执，附【撤销】按钮
         Messages.send(requester, KEY_REQUEST_SENT,
                 target.getDisplayName(),
-                String.valueOf(TIMEOUT_SECONDS),
                 button(requester, KEY_BUTTON_CANCEL, "/cancel", ChatFormatting.GRAY));
 
         // 给目标的请求提示，附【接受】【拒绝】按钮
         Messages.send(target, KEY_REQUEST_RECEIVED,
                 requester.getDisplayName(),
-                String.valueOf(TIMEOUT_SECONDS),
                 button(target, KEY_BUTTON_ACCEPT, "/confirm", ChatFormatting.GREEN),
                 button(target, KEY_BUTTON_DENY, "/deny", ChatFormatting.RED));
 

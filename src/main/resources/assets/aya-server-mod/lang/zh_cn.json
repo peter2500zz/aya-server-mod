@@ -3,13 +3,13 @@
   "aya-server-mod.button.deny": "[拒绝]",
   "aya-server-mod.button.cancel": "[撤销]",
 
-  "aya-server-mod.command.here.success": "已高亮你的位置，持续 %s 秒。",
+  "aya-server-mod.command.here.success": "已高亮你的位置。",
 
   "aya-server-mod.command.tpa.self": "不能向自己发送传送请求。",
   "aya-server-mod.command.tpa.target_busy": "%s 正有一个待处理的传送请求，请稍后再试。",
-  "aya-server-mod.command.tpa.already_pending": "你已有一个待回应的传送请求，请先用 /cancel 撤销。",
-  "aya-server-mod.command.tpa.request.sent": "已向 %s 发送传送请求，对方需在 %s 秒内接受，逾期失效。 %s",
-  "aya-server-mod.command.tpa.request.received": "%s 请求传送到你身边，请在 %s 秒内回应，逾期失效。 %s %s",
+  "aya-server-mod.command.tpa.already_pending": "你已有一个待回应的传送请求。\n%s",
+  "aya-server-mod.command.tpa.request.sent": "已向 %s 发送传送请求。\n%s",
+  "aya-server-mod.command.tpa.request.received": "%s 请求传送到你身边。\n%s %s",
   "aya-server-mod.command.tpa.accepted.requester": "%s 接受了你的传送请求。",
   "aya-server-mod.command.tpa.accepted.target": "已接受 %s 的传送请求。",
   "aya-server-mod.command.tpa.expired.requester": "%s 未在 %s 秒内回应，你的传送请求已失效。",
