@@ -23,7 +23,7 @@ import java.util.Set;
  */
 public class BackCommand {
 
-    /** 传送成功后的提示文本翻译键，参数为死亡点的 x / y / z 方块坐标。 */
+    /** 传送成功后的提示文本翻译键，无参数。 */
     private static final String KEY_SUCCESS = "aya-server-mod.command.back.success";
 
     /** 玩家从未死亡时的提示文本翻译键。 */
@@ -94,12 +94,7 @@ public class BackCommand {
                 true
         );
 
-        // 回执死亡点的方块坐标（整数，无需格式化）。
-        // 坐标按约定转成 String 传参：可变参数会随消息过网络序列化，只应传 String 或 Component
-        Messages.sendSuccess(source, KEY_SUCCESS,
-                String.valueOf(pos.getX()),
-                String.valueOf(pos.getY()),
-                String.valueOf(pos.getZ()));
+        Messages.sendSuccess(source, KEY_SUCCESS);
 
         return 1;
     }

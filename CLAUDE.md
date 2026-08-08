@@ -194,9 +194,12 @@ entity.addEffect(new MobEffectInstance(MobEffects.GLOWING, DURATION_TICKS, 0, fa
 一份文件同时供服务端查表与客户端资源系统使用）。
 
 - **必须完整维护 `en_us` 与 `zh_cn` 两份**，键集保持一致。
-- `en_us` 是兜底语言：玩家语言未收录时（如 `ja_jp`）回退到英文。
+- **`zh_cn` 是基准语言（文案母本）**：新增或改写文案一律先改中文，再据此翻译其余语言。
+  启动时 `ServerLanguage` 以它为准校验其余语言，缺键或多键都记 WARN。
+- **`en_us` 是兜底语言**：玩家语言未收录时（如 `ja_jp`）回退到英文。
+  这与基准语言是两回事 —— 基准决定「以谁为准」，兜底决定「查不到时给谁的文本」。
 - 新增语言需在 `ServerLanguage.BUNDLED_LANGUAGES` 中登记。
-- 启动时 `ServerLanguage` 会以 `en_us` 为基准校验其余语言的键完整性，缺键按 WARN 记录。
+- 正文与按钮之间用 `\n` 分行。已确认 `StringSplitter.splitLines` 按换行符切分，聊天栏会正常换行。
 
 ### 键名规范
 

@@ -11,7 +11,6 @@ import net.minecraft.world.level.portal.TeleportTransition;
 import net.minecraft.world.phys.Vec3;
 import plus.mygo.i18n.Messages;
 
-import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -22,12 +21,12 @@ import java.util.Set;
  * 该方法内部按重生方块类型分派到床 / 重生锚各自的站立点查找算法。
  * <p>
  * 若玩家从未设置重生点，或床 / 重生锚已被破坏、被遮挡、（重生锚）无充能，则命令无效：
- * 不传送，并按具体原因发送对应提示；否则传送并回执目标坐标。
+ * 不传送，并按具体原因发送对应提示；否则传送并回执。
  * 查找时传入 {@code useCharge=false}，因此不消耗重生锚充能，{@code /home} 可反复使用。
  */
 public class HomeCommand {
 
-    /** 传送成功后的提示文本翻译键，参数为重生点的 x / y / z 坐标。 */
+    /** 传送成功后的提示文本翻译键，无参数。 */
     private static final String KEY_SUCCESS = "aya-server-mod.command.home.success";
 
     /** 玩家从未设置重生点时的提示文本翻译键。 */
@@ -99,12 +98,7 @@ public class HomeCommand {
                 true
         );
 
-        // 回执重生点坐标。坐标为浮点数，用 Locale.ROOT 固定小数点格式并保留两位小数，
-        // 避免在服务器默认区域设置使用逗号作小数点时格式化出 "12,50" 这类文本
-        Messages.sendSuccess(source, KEY_SUCCESS,
-                String.format(Locale.ROOT, "%.2f", pos.x),
-                String.format(Locale.ROOT, "%.2f", pos.y),
-                String.format(Locale.ROOT, "%.2f", pos.z));
+        Messages.sendSuccess(source, KEY_SUCCESS);
 
         return 1;
     }

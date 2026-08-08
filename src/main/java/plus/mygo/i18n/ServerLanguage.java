@@ -26,6 +26,10 @@ import java.util.Map;
  * </ul>
  * JSON 解析复用原版 {@link Language#loadFromJson}，行为与原版语言文件完全一致，
  * 且无需引入任何额外的 JSON 依赖。
+ * <p>
+ * <b>基准语言与兜底语言是两个独立概念。</b>
+ * {@link #REFERENCE_LANGUAGE}（简体中文）是文案母本，新增或改写文案先改它，启动校验也以它为准；
+ * {@link #FALLBACK_LANGUAGE}（英文）只在玩家语言未收录时兜底，决定这类玩家看到什么语言。
  */
 public final class ServerLanguage {
 
@@ -33,8 +37,18 @@ public final class ServerLanguage {
      * 兜底语言代码。
      * 当玩家的客户端语言未收录在 {@link #BUNDLED_LANGUAGES} 中时（例如 ja_jp），
      * 回退到该语言取文本，避免玩家看到裸露的翻译键。
+     * <p>
+     * 这与 {@link #REFERENCE_LANGUAGE} 是两回事：兜底语言决定「查不到时给谁的文本」，
+     * 基准语言决定「以谁为准校验其余语言是否完整」。
      */
     public static final String FALLBACK_LANGUAGE = "en_us";
+
+    /**
+     * 基准语言代码。本模组以简体中文为文案母本：新增或改写文案时先改
+     * {@code zh_cn.json}，再据此翻译其余语言。
+     * 启动校验即以该语言的键集为准，其余语言缺键或多键都会记录 WARN。
+     */
+    public static final String REFERENCE_LANGUAGE = "zh_cn";
 
     /**
      * 内置并完整维护的语言代码列表。
@@ -79,7 +93,7 @@ public final class ServerLanguage {
         }
 
         AyaServerMod.LOGGER.info("已加载 {} 种语言的翻译表：{}", TABLES.size(), TABLES.keySet());
-        verifyAgainstFallback();
+        verifyAgainstReference();
     }
 
     /**
@@ -142,21 +156,25 @@ public final class ServerLanguage {
     }
 
     /**
-     * 以兜底语言为基准校验其余语言表的完整性，缺失的键按 WARN 记录。
+     * 以 {@link #REFERENCE_LANGUAGE} 为基准校验其余语言表的完整性，出入的键按 WARN 记录。
      * <p>
      * 该校验只在启动时执行一次，纯诊断用途，不影响运行：某语言缺键时该键的查询
      * 会自动回退到兜底语言，玩家仍能看到可读文本，只是语言不匹配。
      */
-    private static void verifyAgainstFallback() {
-        Map<String, String> reference = TABLES.get(FALLBACK_LANGUAGE);
+    private static void verifyAgainstReference() {
+        Map<String, String> reference = TABLES.get(REFERENCE_LANGUAGE);
+        if (reference == null) {
+            AyaServerMod.LOGGER.error("基准语言 {} 加载失败，跳过翻译完整性校验", REFERENCE_LANGUAGE);
+            return;
+        }
 
         for (Map.Entry<String, Map<String, String>> entry : TABLES.entrySet()) {
             String languageCode = entry.getKey();
-            if (languageCode.equals(FALLBACK_LANGUAGE)) {
+            if (languageCode.equals(REFERENCE_LANGUAGE)) {
                 continue;
             }
 
-            // 基准语言有、该语言没有的键 → 该语言不完整
+            // 基准语言有、该语言没有的键 → 该语言漏译
             for (String key : reference.keySet()) {
                 if (!entry.getValue().containsKey(key)) {
                     AyaServerMod.LOGGER.warn("语言 {} 缺少翻译键：{}", languageCode, key);
@@ -167,7 +185,7 @@ public final class ServerLanguage {
             for (String key : entry.getValue().keySet()) {
                 if (!reference.containsKey(key)) {
                     AyaServerMod.LOGGER.warn("语言 {} 含有基准语言 {} 中不存在的翻译键：{}",
-                            languageCode, FALLBACK_LANGUAGE, key);
+                            languageCode, REFERENCE_LANGUAGE, key);
                 }
             }
         }

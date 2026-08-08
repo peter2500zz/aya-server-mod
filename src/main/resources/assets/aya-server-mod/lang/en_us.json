@@ -7,9 +7,9 @@
 
   "aya-server-mod.command.tpa.self": "You cannot send a teleport request to yourself.",
   "aya-server-mod.command.tpa.target_busy": "%s already has a pending teleport request. Try again later.",
-  "aya-server-mod.command.tpa.already_pending": "You already have a teleport request awaiting a reply.\n%s",
-  "aya-server-mod.command.tpa.request.sent": "Teleport request sent to %s.\n%s",
-  "aya-server-mod.command.tpa.request.received": "%s wants to teleport to you.\n%s %s",
+  "aya-server-mod.command.tpa.already_pending": "You already have a teleport request awaiting a reply.\nQuick actions: %s",
+  "aya-server-mod.command.tpa.request.sent": "Teleport request sent to %s.\nQuick actions: %s",
+  "aya-server-mod.command.tpa.request.received": "%s wants to teleport to you.\nQuick actions: %s %s",
   "aya-server-mod.command.tpa.accepted.requester": "%s accepted your teleport request.",
   "aya-server-mod.command.tpa.accepted.target": "You accepted the teleport request from %s.",
   "aya-server-mod.command.tpa.expired.requester": "%s did not reply within %s seconds, so your teleport request expired.",
@@ -23,11 +23,11 @@
   "aya-server-mod.command.tpa.no_pending_incoming": "You have no pending teleport request.",
   "aya-server-mod.command.tpa.no_pending_outgoing": "You have no teleport request to cancel.",
 
-  "aya-server-mod.command.back.success": "Teleported back to your last death location at %s, %s, %s.",
+  "aya-server-mod.command.back.success": "Teleported back to your last death location.",
   "aya-server-mod.command.back.no_death": "You have no recorded death location.",
   "aya-server-mod.command.back.dimension_missing": "The dimension of your last death no longer exists.",
 
-  "aya-server-mod.command.home.success": "Teleported back to your respawn point at %s, %s, %s.",
+  "aya-server-mod.command.home.success": "Teleported back to your respawn point.",
   "aya-server-mod.command.home.not_set": "You have not set a respawn point yet.",
   "aya-server-mod.command.home.obstructed": "Your respawn point is missing or obstructed."
 }

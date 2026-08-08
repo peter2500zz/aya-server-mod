@@ -7,9 +7,9 @@
 
   "aya-server-mod.command.tpa.self": "不能向自己发送传送请求。",
   "aya-server-mod.command.tpa.target_busy": "%s 正有一个待处理的传送请求，请稍后再试。",
-  "aya-server-mod.command.tpa.already_pending": "你已有一个待回应的传送请求。\n%s",
-  "aya-server-mod.command.tpa.request.sent": "已向 %s 发送传送请求。\n%s",
-  "aya-server-mod.command.tpa.request.received": "%s 请求传送到你身边。\n%s %s",
+  "aya-server-mod.command.tpa.already_pending": "你已有一个待回应的传送请求。\n快捷操作：%s",
+  "aya-server-mod.command.tpa.request.sent": "已向 %s 发送传送请求。\n快捷操作：%s",
+  "aya-server-mod.command.tpa.request.received": "%s 请求传送到你身边。\n快捷操作：%s %s",
   "aya-server-mod.command.tpa.accepted.requester": "%s 接受了你的传送请求。",
   "aya-server-mod.command.tpa.accepted.target": "已接受 %s 的传送请求。",
   "aya-server-mod.command.tpa.expired.requester": "%s 未在 %s 秒内回应，你的传送请求已失效。",
@@ -23,11 +23,11 @@
   "aya-server-mod.command.tpa.no_pending_incoming": "你没有待处理的传送请求。",
   "aya-server-mod.command.tpa.no_pending_outgoing": "你没有待撤销的传送请求。",
 
-  "aya-server-mod.command.back.success": "已传送回上次死亡地点 %s, %s, %s。",
+  "aya-server-mod.command.back.success": "已传送回上次死亡地点。",
   "aya-server-mod.command.back.no_death": "你还没有死亡记录。",
   "aya-server-mod.command.back.dimension_missing": "上次死亡所在的维度已不存在。",
 
-  "aya-server-mod.command.home.success": "已传送回重生点 %s, %s, %s。",
+  "aya-server-mod.command.home.success": "已传送回重生点。",
   "aya-server-mod.command.home.not_set": "你还没有设置重生点。",
   "aya-server-mod.command.home.obstructed": "你的重生点已被破坏或阻挡。"
 }
