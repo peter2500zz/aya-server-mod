@@ -33,8 +33,10 @@ public class TpaCommand {
     public static void register() {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
             dispatcher.register(Commands.literal("tpa")
-                // 在 Brigadier 层面限制为玩家：控制台及非玩家实体不可见此指令
-                .requires(CommandSourceStack::isPlayer)
+                // 声明任何来源都可执行，非玩家由 execute 中的 getPlayerOrException() 拦下。
+                // 不可改用 requires(isPlayer)：那会让本指令被标记为受限指令，
+                // 玩家点击聊天里的按钮时会弹出提权确认框（详见 CLAUDE.md「命令编写规范」）。
+                .requires(Commands.hasPermission(Commands.LEVEL_ALL))
                 .then(Commands.argument(ARG_PLAYER, EntityArgument.player())
                     // EntityArgument.player() 内置与原版 /tell 完全相同的补全逻辑：
                     //   - Tab 补全自动列出在线玩家名，并支持 @s/@p 等选择器
@@ -55,7 +57,7 @@ public class TpaCommand {
      *                                由 {@link EntityArgument} 内部抛出（含原版本地化错误提示）
      */
     private static int execute(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-        // requires() 已保证来源为玩家，此处不会抛出异常
+        // 来源不是玩家时在此抛出原版本地化错误（permissions.requires.player）
         ServerPlayer requester = context.getSource().getPlayerOrException();
 
         // EntityArgument.getPlayer() 在目标不在线时抛出 CommandSyntaxException，

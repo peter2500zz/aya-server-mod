@@ -360,15 +360,18 @@ public final class TpaRequests {
      *
      * @param viewer  按钮的观看者，其客户端语言决定按钮文字的 fallback 语言
      * @param key     按钮文字的翻译键
-     * @param command 点击后执行的指令，须含前导斜杠
+     * @param command 点击后填入聊天栏的指令，须含前导斜杠
      * @param color   按钮颜色
      * @return 带颜色、点击事件与悬停提示的按钮组件
      */
     private static MutableComponent button(ServerPlayer viewer, String key, String command, ChatFormatting color) {
         return Messages.of(viewer, key).withStyle(style -> style
                 .withColor(color)
-                // ClickEvent 在 26.2 中是密封接口 + record，RunCommand 表示「点击后以玩家身份执行该指令」
-                .withClickEvent(new ClickEvent.RunCommand(command))
+                // ClickEvent 在 26.2 中是密封接口 + record。
+                // 此处用 SuggestCommand（把指令填入聊天栏，由玩家按回车确认）而非 RunCommand：
+                // RunCommand 会让客户端弹出「确认执行指令」窗口，多一步操作且措辞吓人；
+                // SuggestCommand 不触发该窗口，玩家仍保有一次确认机会。
+                .withClickEvent(new ClickEvent.SuggestCommand(command))
                 // 悬停显示指令原文，便于玩家知道也可以手动输入；指令名不翻译，故用 literal
                 .withHoverEvent(new HoverEvent.ShowText(Component.literal(command))));
     }

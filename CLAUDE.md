@@ -68,13 +68,49 @@ src/main/java/plus/mygo/
 
 ## 命令编写规范
 
-- 使用 `.requires()` 在 Brigadier 层面限制执行者，而非在执行逻辑中抛出异常。
-- 仅限玩家执行的命令：`.requires(CommandSourceStack::isPlayer)`，随后用 `getPlayerOrException()` 取玩家。
-- 仅限生物实体执行的命令：`.requires(source -> source.getEntity() instanceof LivingEntity)`。
-- 注意 `requires()` 在 **Brigadier 解析期**用**原始来源**判定，因此 `/execute as <玩家> run <玩家专属命令>`
-  从控制台执行会解析失败（控制台 `isPlayer()` 为 false）。这是原版既定行为，非缺陷，不要为此放宽 `requires`。
+- 所有命令统一用 `.requires(Commands.hasPermission(Commands.LEVEL_ALL))`，
+  执行者身份在 `execute()` 里用 `getPlayerOrException()` 校验。
+- **禁止使用 `.requires(CommandSourceStack::isPlayer)`**，理由见下。
 - tick 换算：`秒数 * 20`，常量用具名 `static final int` 声明。
 - 命令执行成功返回 `1`，失败返回 `0`。
+
+### 为什么不能用 `requires(isPlayer)` 限制执行者
+
+服务端下发命令树时，按下式给每个节点打 `FLAG_RESTRICTED`（`Commands$1.isRestricted`）：
+
+```java
+return !node.getRequirement().test(this.noPermissionSource);
+// noPermissionSource = Commands.createCompilationContext(PermissionSet.NO_PERMISSIONS)
+//   → CommandSource.NULL，entity = null，level = null
+```
+
+客户端 `ClientPacketListener.verifyCommand()` 把命令解析两次（正常权限 / 受限权限），
+后者失败即判为 `PERMISSIONS_REQUIRED`，于是点击聊天中的 `run_command` 按钮时弹出：
+
+> You are trying to execute a command that requires elevated permissions.
+> This might negatively affect your game.
+
+**这个判定与真实权限等级无关**，它问的是「无权限来源能否解析该命令」。
+`isPlayer` 对那个合成来源必然返回 `false`（其 `entity == null`），
+于是本模组每一条命令都会被误标为高危受限指令。
+
+`Commands.LEVEL_ALL` 即 `PermissionCheck.AlwaysPass.INSTANCE`，对任何来源恒真，
+因此 `Commands.hasPermission(Commands.LEVEL_ALL)` 能如实声明「本指令无需任何权限」。
+
+代价是控制台补全里能看到这些命令，非玩家执行时由 `getPlayerOrException()` 抛出原版
+本地化错误 `permissions.requires.player`（"A player is required to run this command here"）。
+这与大量原版命令的行为一致，可以接受。
+
+### 聊天按钮
+
+可点击按钮一律用 `ClickEvent.SuggestCommand`（把指令填入聊天栏，玩家按回车确认），
+**不要用 `RunCommand`**：即便节点不受限，`RunCommand` 在指令解析异常或需要签名时仍可能弹确认框，
+而 `SuggestCommand` 从不触发该窗口，且保留了玩家的一次确认机会。
+
+### 其他
+
+- `requires()` 在 **Brigadier 解析期**用**原始来源**判定，因此 `/execute as <玩家> run <命令>`
+  的子命令是拿**外层来源**做可见性检查的。这是原版既定行为，非缺陷。
 
 ## 注释规范
 
