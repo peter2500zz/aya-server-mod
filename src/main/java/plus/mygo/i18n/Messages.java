@@ -2,6 +2,7 @@ package plus.mygo.i18n;
 
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.level.ServerPlayer;
 
 /**
@@ -40,9 +41,10 @@ public final class Messages {
      *               为 {@code null}（例如来源是控制台）时按兜底语言处理
      * @param key    翻译键
      * @param args   模板参数，按约定只传 {@link String} 或 {@link Component}
-     * @return 可直接发送的文本组件
+     * @return 可直接发送的文本组件；返回 {@link MutableComponent} 以便调用方追加样式
+     *         （如给可点击按钮挂上颜色与 {@code ClickEvent}）
      */
-    public static Component of(ServerPlayer viewer, String key, Object... args) {
+    public static MutableComponent of(ServerPlayer viewer, String key, Object... args) {
         // ClientInformation 是玩家在握手及每次修改设置时上报的客户端选项快照，
         // language() 即客户端当前选择的语言代码（形如 zh_cn）
         String languageCode = viewer == null ? null : viewer.clientInformation().language();

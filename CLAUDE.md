@@ -32,6 +32,19 @@ Minecraft 26.1 起使用 Mojang 官方类名，**禁止使用 Yarn 映射名**�
 - 不引入任何非必要的第三方依赖。
 - 不修改现有原版行为，只扩展。
 
+### 对存档零副作用（硬约束）
+
+**本模组只能持有运行时状态，必须保证对存档完全无副作用。** 卸载本模组后，存档须与从未装过一样。
+
+- 模组自身的状态（如待处理的传送请求）一律放在**内存**中，服务器重启即清空。
+- **禁止**写入自定义 NBT、`SavedData` / `DimensionDataStorage`、计分板、玩家 `Attachment`，
+  也禁止在存档目录下创建任何文件。
+- **禁止**为「重启后恢复未完成的状态」这类需求引入持久化 —— 该状态本就应随重启消失。
+- 资源目录只放 `assets/`，**不要新增 `data/`**：带 `data/` 会让 Fabric 注册内置数据包，
+  其 id 会被写进 `level.dat` 的已启用数据包列表，卸载模组后原版会报 `Missing data pack mod:<id>`。
+- 指令改变原版游戏状态（传送坐标、物品位置、药水效果等）**不属于**副作用 ——
+  那是指令本身的语义，且写入的都是原版自己能理解的数据。此约束针对的是**模组专属的持久化数据**。
+
 ## 代码结构
 
 ```
@@ -39,9 +52,11 @@ src/main/java/plus/mygo/
 ├── AyaServerMod.java      # 主入口，仅负责调用各命令的 register()
 ├── command/
 │   └── XxxCommand.java    # 每条命令一个类
-└── i18n/
-    ├── ServerLanguage.java  # 服务端翻译表：加载内置 lang 文件、按语言查表
-    └── Messages.java        # 消息门面：构造带 fallback 的文本并发送
+├── i18n/
+│   ├── ServerLanguage.java  # 服务端翻译表：加载内置 lang 文件、按语言查表
+│   └── Messages.java        # 消息门面：构造带 fallback 的文本并发送
+└── tpa/
+    └── TpaRequests.java     # /tpa 请求的内存登记处与 tick 计时器
 ```
 
 - 每条命令独立一个类，放在 `plus.mygo.command` 包下。
@@ -199,3 +214,4 @@ Messages.send(target, KEY_SUCCESS_TARGET, executor.getDisplayName());
 - 禁止在命令类中直接调用 `sendSuccess` / `sendFailure` / `sendSystemMessage` 发送自造文本 ——
   一律经由 `Messages`，否则会绕过服务端查表，未装本 mod 的客户端将看到裸露的翻译键。
 - 禁止只补一种语言的 lang 文件：`en_us` 与 `zh_cn` 必须同步增删，保持键集一致。
+- 禁止任何形式的持久化 —— 见「对存档零副作用」。模组状态只能存在于内存。

@@ -4,18 +4,23 @@ import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import plus.mygo.command.BackCommand;
+import plus.mygo.command.CancelCommand;
+import plus.mygo.command.ConfirmCommand;
+import plus.mygo.command.DenyCommand;
 import plus.mygo.command.DieCommand;
 import plus.mygo.command.HatCommand;
 import plus.mygo.command.HereCommand;
 import plus.mygo.command.HomeCommand;
 import plus.mygo.command.TpaCommand;
 import plus.mygo.i18n.ServerLanguage;
+import plus.mygo.tpa.TpaRequests;
 
 /**
  * Mod 主入口。
  * <p>
  * 服务端加载完成后由 Fabric Loader 调用 {@link #onInitialize()}。
- * 本类仅负责加载服务端翻译表并统一注册所有指令，不包含任何业务逻辑。
+ * 本类仅负责加载服务端翻译表、注册运行时状态所需的事件回调并统一注册所有指令，
+ * 不包含任何业务逻辑。
  */
 public class AyaServerMod implements ModInitializer {
 
@@ -35,7 +40,14 @@ public class AyaServerMod implements ModInitializer {
         // 此处仅读取 jar 内的 classpath 资源，不依赖服务器实例，故可在初始化阶段安全调用。
         ServerLanguage.load();
 
+        // 注册 /tpa 请求的 tick 回调：推进超时倒计时，并清理任一方已离线的请求。
+        // 请求全部保存在内存中，不写入存档，服务器重启后自然清空。
+        TpaRequests.register();
+
         BackCommand.register();
+        CancelCommand.register();
+        ConfirmCommand.register();
+        DenyCommand.register();
         DieCommand.register();
         HatCommand.register();
         HereCommand.register();
