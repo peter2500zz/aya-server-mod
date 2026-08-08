@@ -98,6 +98,11 @@ public class HomeCommand {
                 true
         );
 
+        // 原版传送（含 /tp）不会清空已累积的下落距离，玩家若在坠落途中执行本指令，
+        // 会带着旧的下落距离落地并照常摔伤甚至摔死。这里显式清零，
+        // 使传送落点始终从零开始计算坠落伤害。
+        player.resetFallDistance();
+
         Messages.sendSuccess(source, KEY_SUCCESS);
 
         return 1;

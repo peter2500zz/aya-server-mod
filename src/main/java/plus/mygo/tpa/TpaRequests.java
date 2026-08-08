@@ -364,6 +364,11 @@ public final class TpaRequests {
                 true
         );
 
+        // 原版传送（含 /tp）不会清空已累积的下落距离，发起者若在坠落途中被接受传送，
+        // 会带着旧的下落距离落地并照常摔伤甚至摔死 —— 而接受的时机不由他决定，
+        // 更不该因此受伤。这里显式清零，使传送落点始终从零开始计算坠落伤害。
+        requester.resetFallDistance();
+
         Messages.send(requester, KEY_ACCEPTED_REQUESTER, target.getDisplayName());
         Messages.send(target, KEY_ACCEPTED_TARGET, requester.getDisplayName());
     }
