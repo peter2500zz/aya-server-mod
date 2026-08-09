@@ -66,8 +66,12 @@ src/main/java/plus/mygo/
 │   ├── ServerLanguage.java  # 服务端翻译表：加载内置 lang 文件、按语言查表
 │   └── Messages.java        # 消息门面：构造带 fallback 的文本并发送
 └── tpa/
-    └── TpaRequests.java     # /tpa 请求的内存登记处与 tick 计时器
+    └── TpaRequests.java     # 传送请求的内存登记处与 tick 计时器
 ```
+
+`TpaRequests` 同时承载 `/tpa`、`/tphere`、`/accept`、`/reject`、`/cancel` 五条指令。
+两条发起指令共用同一条请求记录（键为「发起者 + 目标」），方向只决定接受后由谁移动，
+因此回应类指令无需关心方向。类名与包名中的 `tpa` 应理解为「传送请求流程」的名字。
 
 - 每条命令独立一个类，放在 `plus.mygo.command` 包下。
 - 命令类对外只暴露一个静态方法 `register()`，由 `AyaServerMod.onInitialize()` 调用。

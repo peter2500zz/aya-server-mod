@@ -27,12 +27,18 @@ import java.util.concurrent.CompletableFuture;
 /**
  * /tpa 传送请求的登记处与计时器。
  * <p>
- * 承载 {@code /tpa}、{@code /accept}、{@code /reject}、{@code /cancel} 四条指令共用的状态与逻辑：
- * 发起请求、接受、拒绝、撤销，以及超时失效。指令类只负责参数解析与失败提示，
- * 请求流程本身的全部消息由本类发出。
+ * 承载 {@code /tpa}、{@code /tphere}、{@code /accept}、{@code /reject}、{@code /cancel}
+ * 五条指令共用的状态与逻辑：发起请求、接受、拒绝、撤销，以及超时失效。
+ * 指令类只负责参数解析与失败提示，请求流程本身的全部消息由本类发出。
  * <p>
  * <b>只有目标明确接受才会传送。</b>请求必须在 {@link #TIMEOUT_SECONDS} 秒内被接受，
  * 逾期即失效并通知双方，不执行传送。
+ * <p>
+ * <b>两条发起指令共用同一条请求记录。</b>{@code /tpa} 与 {@code /tphere} 的差别只在于
+ * 接受后由谁移动（见 {@link Movement}），请求本身的身份仍是「谁向谁发起」。
+ * 因此 jack 对 bob 已有一条待处理请求时，无论那条原本是 {@code /tpa} 还是 {@code /tphere}，
+ * 他都无法再向 bob 发起另一条 —— 必须先撤销。这也意味着接受、拒绝、撤销三条指令
+ * 完全无需关心方向，方向只在真正执行传送时才被读出。
  * <p>
  * <b>请求之间互不排斥。</b>唯一性只落在<b>（发起者, 目标）二元组</b>上：
  * 同一玩家可以同时收到多人的请求，也可以同时向多人发出请求，各自独立计时、独立失效。
@@ -72,6 +78,12 @@ public final class TpaRequests {
 
     /** 请求发出后给目标的提示文本翻译键。 */
     private static final String KEY_REQUEST_RECEIVED = "aya-server-mod.command.tpa.request.received";
+
+    /** {@code /tphere} 请求发出后给发起者的回执文本翻译键。 */
+    private static final String KEY_TPHERE_REQUEST_SENT = "aya-server-mod.command.tphere.request.sent";
+
+    /** {@code /tphere} 请求发出后给目标的提示文本翻译键。 */
+    private static final String KEY_TPHERE_REQUEST_RECEIVED = "aya-server-mod.command.tphere.request.received";
 
     /** 目标接受后，给发起者的提示文本翻译键。 */
     private static final String KEY_ACCEPTED_REQUESTER = "aya-server-mod.command.tpa.accepted.requester";
@@ -128,6 +140,21 @@ public final class TpaRequests {
     }
 
     /**
+     * 请求被接受后由谁移动 —— 这是 {@code /tpa} 与 {@code /tphere} 唯一的区别。
+     * <p>
+     * 请求的「发起者 / 目标」身份与本枚举无关：无论哪个方向，发起者都是打出指令的人，
+     * 目标都是被征求同意的人。本枚举只决定传送时谁是移动方、谁是落点。
+     */
+    public enum Movement {
+
+        /** {@code /tpa}：接受后发起者被传送到目标身边。 */
+        REQUESTER_TO_TARGET,
+
+        /** {@code /tphere}：接受后目标被传送到发起者身边。 */
+        TARGET_TO_REQUESTER
+    }
+
+    /**
      * 请求的唯一标识：谁请求传送到谁那里。
      * <p>
      * 用 record 以自动获得 {@code equals} / {@code hashCode}，从而可直接作为 Map 的键。
@@ -139,15 +166,25 @@ public final class TpaRequests {
     }
 
     /**
-     * 单条待处理请求的可变状态。
+     * 单条待处理请求的状态。
      * <p>
      * 不用 record 是因为 {@link #remainingTicks} 需要逐 tick 递减，必须可变；
      * 双方身份已由 {@link RequestKey} 承载，此处不再重复存放。
      */
     private static final class PendingRequest {
 
+        /** 接受后由谁移动，由发起时用的是 {@code /tpa} 还是 {@code /tphere} 决定，此后不再变化。 */
+        private final Movement movement;
+
         /** 剩余刻数，每服务端 tick 减一；归零即判定超时失效。 */
         private int remainingTicks = TIMEOUT_TICKS;
+
+        /**
+         * @param movement 接受后由谁移动
+         */
+        private PendingRequest(Movement movement) {
+            this.movement = movement;
+        }
     }
 
     /**
@@ -159,13 +196,14 @@ public final class TpaRequests {
     }
 
     /**
-     * 发起一条传送请求。
+     * 发起一条传送请求。{@code /tpa} 与 {@code /tphere} 共用本方法，仅 {@code movement} 不同。
      *
-     * @param requester 发起者，即将来被传送的一方
+     * @param requester 发起者，即打出指令的一方
      * @param target    目标玩家，请求将发给它
+     * @param movement  请求被接受后由谁移动
      * @return 1 表示请求已发出；0 表示因自我请求或重复请求被拒绝（已向发起者说明原因）
      */
-    public static int create(ServerPlayer requester, ServerPlayer target) {
+    public static int create(ServerPlayer requester, ServerPlayer target, Movement movement) {
         // 向自己发请求没有意义：既不需要征得同意，传送也是原地不动
         if (requester.getUUID().equals(target.getUUID())) {
             Messages.send(requester, KEY_SELF);
@@ -175,7 +213,9 @@ public final class TpaRequests {
         RequestKey key = new RequestKey(requester.getUUID(), target.getUUID());
 
         // 已向同一目标发过且尚未失效：不重复打扰对方，也不重置计时，
-        // 而是提示发起者先撤销 —— 附上已填好目标玩家名的【撤销】按钮
+        // 而是提示发起者先撤销 —— 附上已填好目标玩家名的【撤销】按钮。
+        // 注意此处不区分那条请求原本是哪个方向：两个方向共用同一个键，
+        // 故提示文案保持中立，玩家点【撤销】后即可改发另一个方向
         if (PENDING.containsKey(key)) {
             Messages.send(requester, KEY_ALREADY_PENDING,
                     target.getDisplayName(),
@@ -183,15 +223,18 @@ public final class TpaRequests {
             return 0;
         }
 
-        PENDING.put(key, new PendingRequest());
+        PENDING.put(key, new PendingRequest(movement));
+
+        // 两条发起指令的差别仅体现在这一对文案上：一边是「我过去」，一边是「你过来」
+        boolean requesterMoves = movement == Movement.REQUESTER_TO_TARGET;
 
         // 给发起者的回执，附【撤销】按钮
-        Messages.send(requester, KEY_REQUEST_SENT,
+        Messages.send(requester, requesterMoves ? KEY_REQUEST_SENT : KEY_TPHERE_REQUEST_SENT,
                 target.getDisplayName(),
                 cancelButton(requester, target));
 
         // 给目标的请求提示，附【接受】【拒绝】按钮，两者都已填好发起者玩家名
-        Messages.send(target, KEY_REQUEST_RECEIVED,
+        Messages.send(target, requesterMoves ? KEY_REQUEST_RECEIVED : KEY_TPHERE_REQUEST_RECEIVED,
                 requester.getDisplayName(),
                 button(target, KEY_BUTTON_ACCEPT,
                         "/accept " + requester.getGameProfile().name(), ChatFormatting.GREEN),
@@ -211,10 +254,12 @@ public final class TpaRequests {
      * @return 1 表示已接受并完成传送；0 表示该发起者并未向目标发送过待处理请求
      */
     public static int accept(ServerPlayer target, ServerPlayer requester) {
-        if (PENDING.remove(new RequestKey(requester.getUUID(), target.getUUID())) == null) {
+        PendingRequest request = PENDING.remove(new RequestKey(requester.getUUID(), target.getUUID()));
+        if (request == null) {
             return 0;
         }
-        complete(requester, target);
+        // 方向在发起时就已确定并存进请求里，接受方无需（也无从）指定
+        complete(requester, target, request.movement);
         return 1;
     }
 
@@ -395,30 +440,37 @@ public final class TpaRequests {
     }
 
     /**
-     * 目标接受请求后：把发起者传送到目标身边并通知双方。
+     * 目标接受请求后：按请求记录的方向执行传送并通知双方。
      *
-     * @param requester 发起者，将被传送
-     * @param target    目标玩家，传送的落点
+     * @param requester 发起者
+     * @param target    目标玩家
+     * @param movement  接受后由谁移动，决定下面谁是移动方、谁是落点
      */
-    private static void complete(ServerPlayer requester, ServerPlayer target) {
-        // ServerPlayer.level() 协变返回 ServerLevel，无需额外转型
-        ServerLevel targetLevel = target.level();
+    private static void complete(ServerPlayer requester, ServerPlayer target, Movement movement) {
+        boolean requesterMoves = movement == Movement.REQUESTER_TO_TARGET;
+        ServerPlayer mover = requesterMoves ? requester : target;
+        ServerPlayer destination = requesterMoves ? target : requester;
 
-        // Set.of() 表示所有坐标均为绝对值（非相对偏移）；保持发起者当前朝向不变；
+        // ServerPlayer.level() 协变返回 ServerLevel，无需额外转型
+        ServerLevel destinationLevel = destination.level();
+
+        // Set.of() 表示所有坐标均为绝对值（非相对偏移）；保持移动方当前朝向不变；
         // 最后一个 boolean 参数 true 表示传送完成后重置镜头
-        requester.teleportTo(
-                targetLevel,
-                target.getX(), target.getY(), target.getZ(),
+        mover.teleportTo(
+                destinationLevel,
+                destination.getX(), destination.getY(), destination.getZ(),
                 Set.of(),
-                requester.getYRot(), requester.getXRot(),
+                mover.getYRot(), mover.getXRot(),
                 true
         );
 
-        // 原版传送（含 /tp）不会清空已累积的下落距离，发起者若在坠落途中被接受传送，
-        // 会带着旧的下落距离落地并照常摔伤甚至摔死 —— 而接受的时机不由他决定，
-        // 更不该因此受伤。这里显式清零，使传送落点始终从零开始计算坠落伤害。
-        requester.resetFallDistance();
+        // 原版传送（含 /tp）不会清空已累积的下落距离，移动方若在坠落途中被传送，
+        // 会带着旧的下落距离落地并照常摔伤甚至摔死 —— 而接受的时机不由他决定
+        //（/tphere 下移动方甚至就是接受者本人之外的另一方），更不该因此受伤。
+        // 这里显式清零，使传送落点始终从零开始计算坠落伤害。
+        mover.resetFallDistance();
 
+        // 两条回执与方向无关：无论谁移动，都是「目标接受了发起者的请求」
         Messages.send(requester, KEY_ACCEPTED_REQUESTER, target.getDisplayName());
         Messages.send(target, KEY_ACCEPTED_TARGET, requester.getDisplayName());
     }

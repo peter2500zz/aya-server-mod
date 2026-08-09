@@ -11,6 +11,7 @@ import plus.mygo.command.HatCommand;
 import plus.mygo.command.HereCommand;
 import plus.mygo.command.HomeCommand;
 import plus.mygo.command.RejectCommand;
+import plus.mygo.command.TpHereCommand;
 import plus.mygo.command.TpaCommand;
 import plus.mygo.i18n.ServerLanguage;
 import plus.mygo.tpa.TpaRequests;
@@ -53,5 +54,6 @@ public class AyaServerMod implements ModInitializer {
         HomeCommand.register();
         RejectCommand.register();
         TpaCommand.register();
+        TpHereCommand.register();
     }
 }

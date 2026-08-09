@@ -9,6 +9,8 @@
   "aya-server-mod.command.tpa.already_pending": "你已向 %s 发送过传送请求。\n快捷操作：%s",
   "aya-server-mod.command.tpa.request.sent": "已向 %s 发送传送请求。\n快捷操作：%s",
   "aya-server-mod.command.tpa.request.received": "%s 请求传送到你身边。\n快捷操作：%s %s",
+  "aya-server-mod.command.tphere.request.sent": "已请求 %s 传送到你身边。\n快捷操作：%s",
+  "aya-server-mod.command.tphere.request.received": "%s 请求你传送过去。\n快捷操作：%s %s",
   "aya-server-mod.command.tpa.accepted.requester": "%s 接受了你的传送请求。",
   "aya-server-mod.command.tpa.accepted.target": "已接受 %s 的传送请求。",
   "aya-server-mod.command.tpa.expired.requester": "%s 未在 %s 秒内回应，你的传送请求已失效。",
