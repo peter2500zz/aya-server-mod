@@ -4,6 +4,7 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.SharedSuggestionProvider;
@@ -14,6 +15,7 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import plus.mygo.AyaServerMod;
 import plus.mygo.i18n.Messages;
 
 import java.util.ArrayList;
@@ -44,6 +46,11 @@ import java.util.concurrent.CompletableFuture;
  * 指向完全相同的结果（同一个人移动到同一个地方），则不新建请求，直接当作接受成交。
  * 例如 alice {@code /tpa bob} 待处理时 bob 打 {@code /tphere alice}，反之亦然。
  * 两条<b>同向</b>请求（如双方都 {@code /tpa} 对方）结果相反，不构成同意，仍各自独立存在。
+ * <p>
+ * <b>Carpet 假人立即同意。</b>若装有 Carpet，发给其 {@code /player} 假人的请求会被
+ * 当场接受 —— 假人不看聊天栏也不会打指令，让它们干等到超时毫无意义。
+ * 该联动是纯运行时软探测（见 {@link #resolveCarpetFakePlayer}），
+ * <b>不引入编译期依赖、不使用 Mixin</b>，未装 Carpet 时完全无感。
  * <p>
  * <b>请求之间互不排斥。</b>唯一性只落在<b>（发起者, 目标）二元组</b>上：
  * 同一玩家可以同时收到多人的请求，也可以同时向多人发出请求，各自独立计时、独立失效。
@@ -132,6 +139,25 @@ public final class TpaRequests {
     /** 【发送请求】按钮文字的翻译键，出现在超时提示中。 */
     private static final String KEY_BUTTON_SEND_REQUEST = "aya-server-mod.button.send_request";
 
+    /** Carpet 模组的 id，与其 fabric.mod.json 中的 id 字段一致。 */
+    private static final String CARPET_MOD_ID = "carpet";
+
+    /**
+     * Carpet 假人的类名。{@code /player <名字> spawn} 与 {@code /player <名字> shadow}
+     * 分别经 {@code createFake} / {@code createShadow} 创建，两者产出的都是该类。
+     */
+    private static final String CARPET_FAKE_PLAYER_CLASS = "carpet.patches.EntityPlayerMPFake";
+
+    /**
+     * Carpet 假人类，未安装 Carpet 时为 {@code null}。
+     * <p>
+     * 刻意只按类名反射解析，<b>不引入对 Carpet 的编译期依赖</b>，也不使用 Mixin ——
+     * 本模组在没有 Carpet 的环境下必须照常工作，因此这只能是一个软联动。
+     * 该字段在类初始化时解析一次并缓存，此后 {@link #isCarpetFakePlayer} 只是一次
+     * {@code isInstance} 调用。用 {@code isInstance} 而非比较类名，是为了让潜在的子类同样生效。
+     */
+    private static final Class<?> CARPET_FAKE_PLAYER = resolveCarpetFakePlayer();
+
     /**
      * 待处理请求表：（发起者, 目标）→ 请求详情。
      * <p>
@@ -201,6 +227,43 @@ public final class TpaRequests {
      */
     public static void register() {
         ServerTickEvents.END_SERVER_TICK.register(TpaRequests::tick);
+
+        if (CARPET_FAKE_PLAYER != null) {
+            AyaServerMod.LOGGER.info("检测到 Carpet，其 /player 假人将自动接受传送请求");
+        }
+    }
+
+    /**
+     * 解析 Carpet 假人类，供 {@link #CARPET_FAKE_PLAYER} 初始化。
+     * <p>
+     * 先问 Fabric Loader 是否装了 Carpet，再按名字取类：两道判断都失败得起，
+     * 未装 Carpet 时静默返回 {@code null}，本模组的其余功能不受任何影响。
+     *
+     * @return Carpet 假人类；未安装 Carpet 或类名对不上时返回 {@code null}
+     */
+    private static Class<?> resolveCarpetFakePlayer() {
+        if (!FabricLoader.getInstance().isModLoaded(CARPET_MOD_ID)) {
+            return null;
+        }
+        try {
+            // Fabric 下所有模组共用同一个类加载器，故默认加载器即可找到 Carpet 的类
+            return Class.forName(CARPET_FAKE_PLAYER_CLASS);
+        } catch (ClassNotFoundException e) {
+            // Carpet 在场却找不到该类，说明其内部结构变了。只停用本联动，不影响其余功能
+            AyaServerMod.LOGGER.warn("检测到 Carpet，但未找到假人类 {}，假人自动接受功能已停用",
+                    CARPET_FAKE_PLAYER_CLASS, e);
+            return null;
+        }
+    }
+
+    /**
+     * 判断某玩家是否为 Carpet 用 {@code /player} 召唤出的假人。
+     *
+     * @param player 待判断的玩家
+     * @return 是假人则返回 {@code true}；未安装 Carpet 时恒为 {@code false}
+     */
+    private static boolean isCarpetFakePlayer(ServerPlayer player) {
+        return CARPET_FAKE_PLAYER != null && CARPET_FAKE_PLAYER.isInstance(player);
     }
 
     /**
@@ -236,6 +299,14 @@ public final class TpaRequests {
             PENDING.remove(reverseKey);
             // 消耗的是对方那条请求：在那条请求里，对方是发起者、我是目标
             complete(target, requester, reverse.movement);
+            return 1;
+        }
+
+        // Carpet 假人不会看聊天栏，更不会打指令，让它们干等到超时毫无意义 ——
+        // 直接视为立即同意。排在互相同意之后：那条分支要消耗一条已存在的请求，
+        // 语义更具体，应优先。（实际上假人从不持有待处理请求，两者不会同时命中。）
+        if (isCarpetFakePlayer(target)) {
+            complete(requester, target, movement);
             return 1;
         }
 
