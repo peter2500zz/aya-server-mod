@@ -1,7 +1,12 @@
 package plus.mygo.tpa;
 
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.ChatFormatting;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
@@ -12,29 +17,28 @@ import net.minecraft.server.level.ServerPlayer;
 import plus.mygo.i18n.Messages;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * /tpa 传送请求的登记处与计时器。
  * <p>
  * 承载 {@code /tpa}、{@code /accept}、{@code /reject}、{@code /cancel} 四条指令共用的状态与逻辑：
- * 发起请求、接受、拒绝、撤销，以及超时失效。指令类只负责参数解析与「无待处理请求」时的提示，
+ * 发起请求、接受、拒绝、撤销，以及超时失效。指令类只负责参数解析与失败提示，
  * 请求流程本身的全部消息由本类发出。
  * <p>
  * <b>只有目标明确接受才会传送。</b>请求必须在 {@link #TIMEOUT_SECONDS} 秒内被接受，
  * 逾期即失效并通知双方，不执行传送。
  * <p>
- * <b>并发约束。</b>同一时刻：
- * <ul>
- *   <li>每个<b>目标</b>最多只有一个待处理请求 —— 因此 {@code /accept} 与 {@code /reject} 永远无歧义；</li>
- *   <li>每个<b>发起者</b>最多只有一个在途请求 —— 因此无参的 {@code /cancel} 永远无歧义。</li>
- * </ul>
- * 违反上述任一约束的新请求会被拒绝并提示发起者，且<b>不会打扰目标</b>。
+ * <b>请求之间互不排斥。</b>唯一性只落在<b>（发起者, 目标）二元组</b>上：
+ * 同一玩家可以同时收到多人的请求，也可以同时向多人发出请求，各自独立计时、独立失效。
+ * 因此三条回应指令都必须指定对方是谁 —— 玩家名由聊天里的按钮预先填好，
+ * 手动输入时则由 {@link #suggestIncoming} / {@link #suggestOutgoing} 提供经过筛选的补全。
+ * 唯一被拒绝的重复情形是向<b>同一</b>目标重复发起，此时提示发起者先撤销。
  * <p>
  * <b>计时与失效。</b>倒计时与在线校验都在服务端 tick 中完成
  * （{@link ServerTickEvents#END_SERVER_TICK}）：每 tick 先确认双方仍在线，任一方离线即作废该请求
@@ -60,10 +64,7 @@ public final class TpaRequests {
     /** 向自己发起请求时的提示文本翻译键。 */
     private static final String KEY_SELF = "aya-server-mod.command.tpa.self";
 
-    /** 目标已有待处理请求时，给发起者的提示文本翻译键。 */
-    private static final String KEY_TARGET_BUSY = "aya-server-mod.command.tpa.target_busy";
-
-    /** 发起者已有在途请求时的提示文本翻译键。 */
+    /** 向同一目标重复发起请求时的提示文本翻译键。 */
     private static final String KEY_ALREADY_PENDING = "aya-server-mod.command.tpa.already_pending";
 
     /** 请求发出后给发起者的回执文本翻译键。 */
@@ -72,10 +73,10 @@ public final class TpaRequests {
     /** 请求发出后给目标的提示文本翻译键。 */
     private static final String KEY_REQUEST_RECEIVED = "aya-server-mod.command.tpa.request.received";
 
-    /** 目标主动接受后，给发起者的提示文本翻译键。 */
+    /** 目标接受后，给发起者的提示文本翻译键。 */
     private static final String KEY_ACCEPTED_REQUESTER = "aya-server-mod.command.tpa.accepted.requester";
 
-    /** 目标主动接受后，给目标自己的提示文本翻译键。 */
+    /** 目标接受后，给目标自己的提示文本翻译键。 */
     private static final String KEY_ACCEPTED_TARGET = "aya-server-mod.command.tpa.accepted.target";
 
     /** 请求超时失效后，给发起者的提示文本翻译键。 */
@@ -85,13 +86,13 @@ public final class TpaRequests {
     private static final String KEY_EXPIRED_TARGET = "aya-server-mod.command.tpa.expired.target";
 
     /** 被拒绝（未附原因）时，给发起者的提示文本翻译键。 */
-    private static final String KEY_DENIED_REQUESTER = "aya-server-mod.command.tpa.denied.requester";
+    private static final String KEY_REJECTED_REQUESTER = "aya-server-mod.command.tpa.rejected.requester";
 
     /** 被拒绝（附有原因）时，给发起者的提示文本翻译键。 */
-    private static final String KEY_DENIED_REQUESTER_REASON = "aya-server-mod.command.tpa.denied.requester_reason";
+    private static final String KEY_REJECTED_REQUESTER_REASON = "aya-server-mod.command.tpa.rejected.requester_reason";
 
     /** 拒绝后给目标自己的提示文本翻译键。 */
-    private static final String KEY_DENIED_TARGET = "aya-server-mod.command.tpa.denied.target";
+    private static final String KEY_REJECTED_TARGET = "aya-server-mod.command.tpa.rejected.target";
 
     /** 撤销后给发起者的提示文本翻译键。 */
     private static final String KEY_CANCELLED_REQUESTER = "aya-server-mod.command.tpa.cancelled.requester";
@@ -106,43 +107,47 @@ public final class TpaRequests {
     private static final String KEY_BUTTON_ACCEPT = "aya-server-mod.button.accept";
 
     /** 【拒绝】按钮文字的翻译键。 */
-    private static final String KEY_BUTTON_DENY = "aya-server-mod.button.deny";
+    private static final String KEY_BUTTON_REJECT = "aya-server-mod.button.reject";
 
     /** 【撤销】按钮文字的翻译键。 */
     private static final String KEY_BUTTON_CANCEL = "aya-server-mod.button.cancel";
 
     /**
-     * 待处理请求表：目标玩家 UUID → 请求详情。
+     * 待处理请求表：（发起者, 目标）→ 请求详情。
      * <p>
-     * 以目标为键天然实现了「每个目标至多一个待处理请求」的约束。
-     * 仅在服务端主线程（指令执行与 tick 回调）中读写，故用普通 HashMap 即可，无需同步。
+     * 以二元组为键，天然实现了「同一对玩家之间至多一条待处理请求」，同时允许一名玩家
+     * 同时参与多条互不相干的请求。用 {@link LinkedHashMap} 保持插入顺序，
+     * 使补全列表的排序稳定可预期。
+     * <p>
+     * 仅在服务端主线程（指令执行、补全回调与 tick 回调）中读写，故用普通 Map 即可，无需同步。
      */
-    private static final Map<UUID, PendingRequest> PENDING = new HashMap<>();
+    private static final Map<RequestKey, PendingRequest> PENDING = new LinkedHashMap<>();
 
     /** 纯静态工具类，禁止实例化。 */
     private TpaRequests() {
     }
 
     /**
-     * 单条待处理请求。
+     * 请求的唯一标识：谁请求传送到谁那里。
      * <p>
-     * 不用 record 是因为 {@link #remainingTicks} 需要逐 tick 递减，必须可变。
+     * 用 record 以自动获得 {@code equals} / {@code hashCode}，从而可直接作为 Map 的键。
+     *
+     * @param requesterId 发起者 UUID，即将来被传送的一方
+     * @param targetId    目标玩家 UUID
+     */
+    private record RequestKey(UUID requesterId, UUID targetId) {
+    }
+
+    /**
+     * 单条待处理请求的可变状态。
+     * <p>
+     * 不用 record 是因为 {@link #remainingTicks} 需要逐 tick 递减，必须可变；
+     * 双方身份已由 {@link RequestKey} 承载，此处不再重复存放。
      */
     private static final class PendingRequest {
 
-        /** 发起者 UUID。存 UUID 而非 ServerPlayer 引用，避免玩家退出后持有失效实体。 */
-        private final UUID requesterId;
-
-        /** 剩余刻数，每服务端 tick 减一；归零即触发自动接受。 */
-        private int remainingTicks;
-
-        /**
-         * @param requesterId 发起者 UUID
-         */
-        private PendingRequest(UUID requesterId) {
-            this.requesterId = requesterId;
-            this.remainingTicks = TIMEOUT_TICKS;
-        }
+        /** 剩余刻数，每服务端 tick 减一；归零即判定超时失效。 */
+        private int remainingTicks = TIMEOUT_TICKS;
     }
 
     /**
@@ -158,7 +163,7 @@ public final class TpaRequests {
      *
      * @param requester 发起者，即将来被传送的一方
      * @param target    目标玩家，请求将发给它
-     * @return 1 表示请求已发出；0 表示因自我请求或并发约束被拒绝（已向发起者说明原因）
+     * @return 1 表示请求已发出；0 表示因自我请求或重复请求被拒绝（已向发起者说明原因）
      */
     public static int create(ServerPlayer requester, ServerPlayer target) {
         // 向自己发请求没有意义：既不需要征得同意，传送也是原地不动
@@ -167,108 +172,164 @@ public final class TpaRequests {
             return 0;
         }
 
-        // 先查发起者自己是否已有在途请求：拒绝，否则无参的 /cancel 将无从判断该撤销哪一条。
-        // 附【撤销】按钮，让玩家可以就地撤掉旧请求后重发。
-        //
-        // 此检查必须排在「目标是否忙」之前：否则玩家对同一目标重复发送时会命中 target_busy，
-        // 被告知「对方正忙」—— 而那条占用请求恰恰是他自己发的，提示驴唇不对马嘴，
-        // 也拿不到撤销按钮。
-        if (findByRequester(requester.getUUID()) != null) {
+        RequestKey key = new RequestKey(requester.getUUID(), target.getUUID());
+
+        // 已向同一目标发过且尚未失效：不重复打扰对方，也不重置计时，
+        // 而是提示发起者先撤销 —— 附上已填好目标玩家名的【撤销】按钮
+        if (PENDING.containsKey(key)) {
             Messages.send(requester, KEY_ALREADY_PENDING,
-                    button(requester, KEY_BUTTON_CANCEL, "/cancel", ChatFormatting.GRAY));
+                    target.getDisplayName(),
+                    cancelButton(requester, target));
             return 0;
         }
 
-        // 目标已被别人的请求占用：拒绝新请求，且不打扰目标（否则会被请求轰炸）
-        if (PENDING.containsKey(target.getUUID())) {
-            Messages.send(requester, KEY_TARGET_BUSY, target.getDisplayName());
-            return 0;
-        }
-
-        PENDING.put(target.getUUID(), new PendingRequest(requester.getUUID()));
+        PENDING.put(key, new PendingRequest());
 
         // 给发起者的回执，附【撤销】按钮
         Messages.send(requester, KEY_REQUEST_SENT,
                 target.getDisplayName(),
-                button(requester, KEY_BUTTON_CANCEL, "/cancel", ChatFormatting.GRAY));
+                cancelButton(requester, target));
 
-        // 给目标的请求提示，附【接受】【拒绝】按钮
+        // 给目标的请求提示，附【接受】【拒绝】按钮，两者都已填好发起者玩家名
         Messages.send(target, KEY_REQUEST_RECEIVED,
                 requester.getDisplayName(),
-                button(target, KEY_BUTTON_ACCEPT, "/accept", ChatFormatting.GREEN),
-                button(target, KEY_BUTTON_DENY, "/reject", ChatFormatting.RED));
+                button(target, KEY_BUTTON_ACCEPT,
+                        "/accept " + requester.getGameProfile().name(), ChatFormatting.GREEN),
+                // 末尾刻意留一个空格：填入聊天栏后光标落在下一个参数位上，
+                // 原版的命令提示会自动显示出可选的「原因」，无需在文案里另行解释
+                button(target, KEY_BUTTON_REJECT,
+                        "/reject " + requester.getGameProfile().name() + " ", ChatFormatting.RED));
 
         return 1;
     }
 
     /**
-     * 目标接受当前待处理的请求（{@code /accept}）。
+     * 目标接受来自指定发起者的请求（{@code /accept <玩家>}）。
      *
-     * @param target 执行 {@code /accept} 的玩家
-     * @return 1 表示已接受并完成传送；0 表示该玩家没有待处理请求
+     * @param target    执行 {@code /accept} 的玩家
+     * @param requester 被接受的那条请求的发起者
+     * @return 1 表示已接受并完成传送；0 表示该发起者并未向目标发送过待处理请求
      */
-    public static int accept(ServerPlayer target) {
-        PendingRequest request = PENDING.remove(target.getUUID());
-        if (request == null) {
+    public static int accept(ServerPlayer target, ServerPlayer requester) {
+        if (PENDING.remove(new RequestKey(requester.getUUID(), target.getUUID())) == null) {
             return 0;
         }
-        complete(target, request);
+        complete(requester, target);
         return 1;
     }
 
     /**
-     * 目标拒绝当前待处理的请求（{@code /reject}）。
+     * 目标拒绝来自指定发起者的请求（{@code /reject <玩家> [原因]}）。
      *
-     * @param target 执行 {@code /reject} 的玩家
-     * @param reason 玩家给出的拒绝原因；为 {@code null} 表示未填写
-     * @return 1 表示已拒绝；0 表示该玩家没有待处理请求
+     * @param target    执行 {@code /reject} 的玩家
+     * @param requester 被拒绝的那条请求的发起者
+     * @param reason    玩家给出的拒绝原因；为 {@code null} 表示未填写
+     * @return 1 表示已拒绝；0 表示该发起者并未向目标发送过待处理请求
      */
-    public static int reject(ServerPlayer target, String reason) {
-        PendingRequest request = PENDING.remove(target.getUUID());
-        if (request == null) {
+    public static int reject(ServerPlayer target, ServerPlayer requester, String reason) {
+        if (PENDING.remove(new RequestKey(requester.getUUID(), target.getUUID())) == null) {
             return 0;
         }
 
-        Messages.send(target, KEY_DENIED_TARGET, displayNameOf(target, request.requesterId));
+        Messages.send(target, KEY_REJECTED_TARGET, requester.getDisplayName());
 
-        ServerPlayer requester = resolve(target, request.requesterId);
-        if (requester != null) {
-            if (reason == null) {
-                Messages.send(requester, KEY_DENIED_REQUESTER, target.getDisplayName());
-            } else {
-                // 原因为玩家自由输入，作为 literal 传入，不参与翻译
-                Messages.send(requester, KEY_DENIED_REQUESTER_REASON,
-                        target.getDisplayName(), Component.literal(reason));
-            }
+        if (reason == null) {
+            Messages.send(requester, KEY_REJECTED_REQUESTER, target.getDisplayName());
+        } else {
+            // 原因为玩家自由输入，作为 literal 传入，不参与翻译
+            Messages.send(requester, KEY_REJECTED_REQUESTER_REASON,
+                    target.getDisplayName(), Component.literal(reason));
         }
         return 1;
     }
 
     /**
-     * 发起者撤销自己发出的请求（{@code /cancel}）。
+     * 发起者撤销自己发给指定目标的请求（{@code /cancel <玩家>}）。
      *
      * @param requester 执行 {@code /cancel} 的玩家
-     * @return 1 表示已撤销；0 表示该玩家没有在途请求
+     * @param target    该条请求的目标玩家
+     * @return 1 表示已撤销；0 表示并不存在这样一条待处理请求
      */
-    public static int cancel(ServerPlayer requester) {
-        UUID targetId = findByRequester(requester.getUUID());
-        if (targetId == null) {
+    public static int cancel(ServerPlayer requester, ServerPlayer target) {
+        if (PENDING.remove(new RequestKey(requester.getUUID(), target.getUUID())) == null) {
             return 0;
         }
-        PENDING.remove(targetId);
 
-        Messages.send(requester, KEY_CANCELLED_REQUESTER, displayNameOf(requester, targetId));
-
-        // 目标可能已离线，此时无须通知
-        ServerPlayer target = resolve(requester, targetId);
-        if (target != null) {
-            Messages.send(target, KEY_CANCELLED_TARGET, requester.getDisplayName());
-        }
+        Messages.send(requester, KEY_CANCELLED_REQUESTER, target.getDisplayName());
+        Messages.send(target, KEY_CANCELLED_TARGET, requester.getDisplayName());
         return 1;
     }
 
     /**
-     * 服务端 tick 回调：校验双方是否仍在线、推进倒计时，并对到期请求执行自动接受。
+     * {@code /accept} 与 {@code /reject} 的玩家参数补全：只列出<b>此刻正在等待自己回应</b>的发起者。
+     * <p>
+     * 该补全依赖服务端的运行时状态，客户端无从得知。原版对未注册的自定义
+     * {@code SuggestionProvider} 一律在命令树数据包中标记为 {@code ASK_SERVER}
+     * （见 {@code SuggestionProviders.getName}），客户端据此回头向服务端索取补全，
+     * 因此本方法会在服务端被调用。
+     *
+     * @param context Brigadier 提供的指令上下文，其来源即请求补全的玩家
+     * @param builder 补全结果收集器
+     * @return 填入候选玩家名后的补全结果
+     */
+    public static CompletableFuture<Suggestions> suggestIncoming(
+            CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
+        return suggestCounterparts(context, builder, true);
+    }
+
+    /**
+     * {@code /cancel} 的玩家参数补全：只列出<b>自己已发出且仍待回应</b>的目标玩家。
+     *
+     * @param context Brigadier 提供的指令上下文，其来源即请求补全的玩家
+     * @param builder 补全结果收集器
+     * @return 填入候选玩家名后的补全结果
+     */
+    public static CompletableFuture<Suggestions> suggestOutgoing(
+            CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
+        return suggestCounterparts(context, builder, false);
+    }
+
+    /**
+     * 补全的共同实现：在待处理请求表中筛出与执行者相关的那一侧，列出对方的玩家名。
+     *
+     * @param context  指令上下文
+     * @param builder  补全结果收集器
+     * @param incoming {@code true} 列出发给执行者的请求之发起者；
+     *                 {@code false} 列出执行者发出的请求之目标
+     * @return 补全结果；来源不是玩家时返回空结果
+     */
+    private static CompletableFuture<Suggestions> suggestCounterparts(
+            CommandContext<CommandSourceStack> context, SuggestionsBuilder builder, boolean incoming) {
+        // 控制台等非玩家来源没有「自己的请求」可言，直接给空补全
+        ServerPlayer viewer = context.getSource().getPlayer();
+        if (viewer == null) {
+            return builder.buildFuture();
+        }
+
+        UUID viewerId = viewer.getUUID();
+        MinecraftServer server = viewer.level().getServer();
+
+        List<String> names = new ArrayList<>();
+        for (RequestKey key : PENDING.keySet()) {
+            // 取出这条请求里「执行者自己」的那一侧与「对方」的那一侧
+            UUID selfSide = incoming ? key.targetId() : key.requesterId();
+            if (!selfSide.equals(viewerId)) {
+                continue;
+            }
+            UUID otherSide = incoming ? key.requesterId() : key.targetId();
+
+            // 补全给的是要填进指令里的玩家名，必须用档案名而非可能带队伍颜色的显示名
+            ServerPlayer other = server.getPlayerList().getPlayer(otherSide);
+            if (other != null) {
+                names.add(other.getGameProfile().name());
+            }
+        }
+        // suggest() 会按玩家已输入的前缀自行过滤，无需在此预筛
+        return SharedSuggestionProvider.suggest(names, builder);
+    }
+
+    /**
+     * 服务端 tick 回调：校验双方是否仍在线、推进倒计时，并对到期请求执行失效处理。
      *
      * @param server 服务器实例，用于按 UUID 解析在线玩家
      */
@@ -278,19 +339,19 @@ public final class TpaRequests {
             return;
         }
 
-        // 在遍历中只做摘除与记录，发消息与传送留到遍历结束后统一执行，
+        // 在遍历中只做摘除与记录，发消息留到遍历结束后统一执行，
         // 以免在迭代 PENDING 的过程中间接修改该表
-        List<Map.Entry<UUID, PendingRequest>> expired = new ArrayList<>();
+        List<RequestKey> expired = new ArrayList<>();
         List<ServerPlayer> orphanedPlayers = new ArrayList<>();
 
-        Iterator<Map.Entry<UUID, PendingRequest>> iterator = PENDING.entrySet().iterator();
+        var iterator = PENDING.entrySet().iterator();
         while (iterator.hasNext()) {
-            Map.Entry<UUID, PendingRequest> entry = iterator.next();
-            ServerPlayer target = server.getPlayerList().getPlayer(entry.getKey());
-            ServerPlayer requester = server.getPlayerList().getPlayer(entry.getValue().requesterId);
+            Map.Entry<RequestKey, PendingRequest> entry = iterator.next();
+            ServerPlayer requester = server.getPlayerList().getPlayer(entry.getKey().requesterId());
+            ServerPlayer target = server.getPlayerList().getPlayer(entry.getKey().targetId());
 
             // 任一方离线，请求立即作废；仍在线的一方会收到说明
-            if (target == null || requester == null) {
+            if (requester == null || target == null) {
                 iterator.remove();
                 ServerPlayer remaining = target != null ? target : requester;
                 if (remaining != null) {
@@ -303,18 +364,19 @@ public final class TpaRequests {
                 continue;
             }
             iterator.remove();
-            expired.add(entry);
+            expired.add(entry.getKey());
         }
 
         for (ServerPlayer player : orphanedPlayers) {
             Messages.send(player, KEY_PARTY_OFFLINE);
         }
 
-        for (Map.Entry<UUID, PendingRequest> entry : expired) {
-            ServerPlayer target = server.getPlayerList().getPlayer(entry.getKey());
+        for (RequestKey key : expired) {
+            ServerPlayer requester = server.getPlayerList().getPlayer(key.requesterId());
+            ServerPlayer target = server.getPlayerList().getPlayer(key.targetId());
             // 上面刚校验过双方在线，此处判空仅为防御
-            if (target != null) {
-                expire(target, entry.getValue());
+            if (requester != null && target != null) {
+                expire(requester, target);
             }
         }
     }
@@ -322,35 +384,23 @@ public final class TpaRequests {
     /**
      * 处理一条超时失效的请求：<b>不执行传送</b>，仅告知双方请求已作废。
      *
-     * @param target  目标玩家，即未在期限内回应的一方
-     * @param request 已从 {@link #PENDING} 中摘除的请求
+     * @param requester 发起者
+     * @param target    目标玩家，即未在期限内回应的一方
      */
-    private static void expire(ServerPlayer target, PendingRequest request) {
+    private static void expire(ServerPlayer requester, ServerPlayer target) {
+        Messages.send(requester, KEY_EXPIRED_REQUESTER,
+                target.getDisplayName(), String.valueOf(TIMEOUT_SECONDS));
         Messages.send(target, KEY_EXPIRED_TARGET,
-                String.valueOf(TIMEOUT_SECONDS), displayNameOf(target, request.requesterId));
-
-        // 发起者可能已离线，此时无须通知
-        ServerPlayer requester = resolve(target, request.requesterId);
-        if (requester != null) {
-            Messages.send(requester, KEY_EXPIRED_REQUESTER,
-                    target.getDisplayName(), String.valueOf(TIMEOUT_SECONDS));
-        }
+                String.valueOf(TIMEOUT_SECONDS), requester.getDisplayName());
     }
 
     /**
-     * 目标接受请求后：执行传送并通知双方。
+     * 目标接受请求后：把发起者传送到目标身边并通知双方。
      *
-     * @param target  目标玩家，发起者将被传送到它所在位置
-     * @param request 已从 {@link #PENDING} 中摘除的请求
+     * @param requester 发起者，将被传送
+     * @param target    目标玩家，传送的落点
      */
-    private static void complete(ServerPlayer target, PendingRequest request) {
-        ServerPlayer requester = resolve(target, request.requesterId);
-        if (requester == null) {
-            // 发起者已离线，传送无从谈起，仅告知目标
-            Messages.send(target, KEY_PARTY_OFFLINE);
-            return;
-        }
-
+    private static void complete(ServerPlayer requester, ServerPlayer target) {
         // ServerPlayer.level() 协变返回 ServerLevel，无需额外转型
         ServerLevel targetLevel = target.level();
 
@@ -374,6 +424,18 @@ public final class TpaRequests {
     }
 
     /**
+     * 构造一个已填好目标玩家名的【撤销】按钮。
+     *
+     * @param viewer 按钮的观看者，即发起者
+     * @param target 该条请求的目标玩家
+     * @return 可点击的【撤销】按钮组件
+     */
+    private static MutableComponent cancelButton(ServerPlayer viewer, ServerPlayer target) {
+        return button(viewer, KEY_BUTTON_CANCEL,
+                "/cancel " + target.getGameProfile().name(), ChatFormatting.GRAY);
+    }
+
+    /**
      * 构造一个可点击的按钮组件。
      *
      * @param viewer  按钮的观看者，其客户端语言决定按钮文字的 fallback 语言
@@ -388,54 +450,10 @@ public final class TpaRequests {
                 // ClickEvent 在 26.2 中是密封接口 + record。
                 // 此处用 SuggestCommand（把指令填入聊天栏，由玩家按回车确认）而非 RunCommand：
                 // RunCommand 会让客户端弹出「确认执行指令」窗口，多一步操作且措辞吓人；
-                // SuggestCommand 不触发该窗口，玩家仍保有一次确认机会。
+                // SuggestCommand 不触发该窗口，玩家仍保有一次确认机会，
+                // 也正是它让【拒绝】按钮末尾的空格能触发原版的下一参数提示。
                 .withClickEvent(new ClickEvent.SuggestCommand(command))
                 // 悬停显示指令原文，便于玩家知道也可以手动输入；指令名不翻译，故用 literal
                 .withHoverEvent(new HoverEvent.ShowText(Component.literal(command))));
-    }
-
-    /**
-     * 反查某发起者的在途请求所对应的目标。
-     * <p>
-     * 待处理请求表以目标为键，因此按发起者查找需遍历。待处理请求数量极少
-     * （每目标至多一条，且仅存活 {@link #TIMEOUT_SECONDS} 秒），遍历开销可忽略，
-     * 故不额外维护反向索引，以免引入两表同步的一致性负担。
-     *
-     * @param requesterId 发起者 UUID
-     * @return 对应的目标玩家 UUID；该发起者没有在途请求时返回 {@code null}
-     */
-    private static UUID findByRequester(UUID requesterId) {
-        for (Map.Entry<UUID, PendingRequest> entry : PENDING.entrySet()) {
-            if (entry.getValue().requesterId.equals(requesterId)) {
-                return entry.getKey();
-            }
-        }
-        return null;
-    }
-
-    /**
-     * 借助任一在线玩家取得服务器实例，按 UUID 解析另一名在线玩家。
-     *
-     * @param context  任一在线玩家，仅用于取得服务器实例
-     * @param playerId 待解析的玩家 UUID
-     * @return 对应的在线玩家；不在线时返回 {@code null}
-     */
-    private static ServerPlayer resolve(ServerPlayer context, UUID playerId) {
-        // ServerPlayer 未公开 server 字段的读取方法，故经由所在世界取服务器实例：
-        // ServerPlayer.level() 协变返回 ServerLevel，其 getServer() 必非空
-        MinecraftServer server = context.level().getServer();
-        return server.getPlayerList().getPlayer(playerId);
-    }
-
-    /**
-     * 取得某玩家的显示名，用于消息参数；玩家已离线时退化为不可翻译的占位文本。
-     *
-     * @param context  任一在线玩家，仅用于取得服务器实例
-     * @param playerId 目标玩家 UUID
-     * @return 显示名组件，或离线时的占位文本
-     */
-    private static Component displayNameOf(ServerPlayer context, UUID playerId) {
-        ServerPlayer player = resolve(context, playerId);
-        return player == null ? Component.literal("?") : player.getDisplayName();
     }
 }
