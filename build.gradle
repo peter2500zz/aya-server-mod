@@ -3,8 +3,24 @@ plugins {
 	id 'maven-publish'
 }
 
+// 注意：该值会经 processResources 展开进 fabric.mod.json 的 version 字段，
+// 必须保持为纯粹的 SemVer 版本号，不要把加载器与 MC 版本并进来 ——
+// "1.1.0-fabric+26.2" 中的 "-fabric" 会被 SemVer 解读为预发布标识，
+// 使其排序低于 1.1.0，影响依赖解析与模组列表显示。产物文件名另行设置。
 version = project.mod_version
 group = project.maven_group
+
+base {
+	// 构建产物基名，与 rootProject.name 解耦
+	archivesName.set('asm')
+}
+
+// 产物文件名形如 asm-1.1.0-fabric+26.2.jar：
+// 覆盖全部归档任务的版本段（jar / sourcesJar，以及 Loom 的 remapJar / remapSourcesJar），
+// 它们默认取 project.version，而上面已说明 project.version 不能带这些后缀。
+tasks.withType(AbstractArchiveTask).configureEach {
+	archiveVersion.set("${project.mod_version}-fabric+${project.minecraft_version}")
+}
 
 repositories {
 	// Add repositories to retrieve artifacts from in here.

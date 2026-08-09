@@ -6,6 +6,16 @@
 - Fabric Loader 0.19.3 / Fabric API 0.152.1+26.2 / Loom 1.16
 - Java 25
 
+### 构建产物命名
+
+`asm-<模组版本>-fabric+<MC 版本>.jar`，由 `build.gradle` 中的 `base.archivesName`
+与归档任务的 `archiveVersion` 共同决定。
+
+**禁止把 `-fabric+<MC 版本>` 后缀并进 `project.version`。** `project.version` 会经
+`processResources` 展开进 `fabric.mod.json`，而 SemVer 会把 `-fabric` 解读为**预发布标识**，
+使 `1.1.0-fabric+26.2` 排序低于 `1.1.0`，影响依赖解析与模组列表显示。
+产物文件名与模组声明版本必须分开设置。
+
 ## 映射规范
 
 Minecraft 26.1 起使用 Mojang 官方类名，**禁止使用 Yarn 映射名**。编写代码前必须查阅当前版本文档确认 API，禁止凭记忆或推理猜测接口。

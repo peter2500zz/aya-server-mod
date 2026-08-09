@@ -77,7 +77,11 @@ Alpha: /tpa Beta
 ./gradlew build
 ```
 
-构建产物位于 `build/libs/` 目录下，将其中的主 JAR 放入服务器的 `mods/` 目录即可。
+构建产物位于 `build/libs/`，命名格式为 `asm-<模组版本>-fabric+<MC 版本>.jar`，
+例如 `asm-1.1.0-fabric+26.2.jar`。把它放进服务器的 `mods/` 目录即可（带 `-sources` 后缀的是源码包，无需部署）。
+
+> 文件名里的版本后缀只用于区分构建产物，不会写进模组自身的版本号 ——
+> `fabric.mod.json` 中始终是纯 SemVer 的 `1.1.0`。
 
 ## 开发规范
 
