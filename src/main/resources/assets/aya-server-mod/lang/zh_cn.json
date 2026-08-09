@@ -2,6 +2,7 @@
   "aya-server-mod.button.accept": "[接受]",
   "aya-server-mod.button.reject": "[拒绝]",
   "aya-server-mod.button.cancel": "[撤销]",
+  "aya-server-mod.button.send_request": "[发送请求]",
 
   "aya-server-mod.command.here.success": "已高亮你的位置。",
 
@@ -14,7 +15,7 @@
   "aya-server-mod.command.tpa.accepted.requester": "%s 接受了你的传送请求。",
   "aya-server-mod.command.tpa.accepted.target": "已接受 %s 的传送请求。",
   "aya-server-mod.command.tpa.expired.requester": "%s 未在 %s 秒内回应，你的传送请求已失效。",
-  "aya-server-mod.command.tpa.expired.target": "你未在 %s 秒内回应，%s 的传送请求已失效。",
+  "aya-server-mod.command.tpa.expired.target": "你未在 %s 秒内回应，%s 的传送请求已失效。\n快捷操作：%s",
   "aya-server-mod.command.tpa.rejected.requester": "%s 拒绝了你的传送请求。",
   "aya-server-mod.command.tpa.rejected.requester_reason": "%s 拒绝了你的传送请求：%s",
   "aya-server-mod.command.tpa.rejected.target": "已拒绝 %s 的传送请求。",

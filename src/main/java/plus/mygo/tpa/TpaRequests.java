@@ -40,6 +40,11 @@ import java.util.concurrent.CompletableFuture;
  * 他都无法再向 bob 发起另一条 —— 必须先撤销。这也意味着接受、拒绝、撤销三条指令
  * 完全无需关心方向，方向只在真正执行传送时才被读出。
  * <p>
+ * <b>反向请求视同接受。</b>若对方已有一条发给自己的待处理请求，而自己新发的这条
+ * 指向完全相同的结果（同一个人移动到同一个地方），则不新建请求，直接当作接受成交。
+ * 例如 alice {@code /tpa bob} 待处理时 bob 打 {@code /tphere alice}，反之亦然。
+ * 两条<b>同向</b>请求（如双方都 {@code /tpa} 对方）结果相反，不构成同意，仍各自独立存在。
+ * <p>
  * <b>请求之间互不排斥。</b>唯一性只落在<b>（发起者, 目标）二元组</b>上：
  * 同一玩家可以同时收到多人的请求，也可以同时向多人发出请求，各自独立计时、独立失效。
  * 因此三条回应指令都必须指定对方是谁 —— 玩家名由聊天里的按钮预先填好，
@@ -123,6 +128,9 @@ public final class TpaRequests {
 
     /** 【撤销】按钮文字的翻译键。 */
     private static final String KEY_BUTTON_CANCEL = "aya-server-mod.button.cancel";
+
+    /** 【发送请求】按钮文字的翻译键，出现在超时提示中。 */
+    private static final String KEY_BUTTON_SEND_REQUEST = "aya-server-mod.button.send_request";
 
     /**
      * 待处理请求表：（发起者, 目标）→ 请求详情。
@@ -211,6 +219,25 @@ public final class TpaRequests {
         }
 
         RequestKey key = new RequestKey(requester.getUUID(), target.getUUID());
+
+        // 互相同意：对方此刻正有一条发给我的待处理请求，且它与我这条指向完全相同的结果
+        //（同一个人移动到同一个地方）—— 那么我这条指令本质上就是在接受对方的请求，
+        // 直接成交，不再新建请求。
+        //
+        // 举例：alice /tpa bob 待处理（alice 去 bob 那），此时 bob 打 /tphere alice
+        //（也是 alice 去 bob 那），二者意图一致；反之亦然。
+        // 而两条同向请求（如双方都 /tpa 对方）结果相反，不构成同意，仍各自独立存在。
+        //
+        // 此判断刻意排在「已向同一目标发过请求」之前：即便我自己对对方也有一条在途请求，
+        // 能促成的传送也应当促成，而不是报错让人先撤销。
+        RequestKey reverseKey = new RequestKey(target.getUUID(), requester.getUUID());
+        PendingRequest reverse = PENDING.get(reverseKey);
+        if (reverse != null && moverOf(reverseKey, reverse.movement).equals(moverOf(key, movement))) {
+            PENDING.remove(reverseKey);
+            // 消耗的是对方那条请求：在那条请求里，对方是发起者、我是目标
+            complete(target, requester, reverse.movement);
+            return 1;
+        }
 
         // 已向同一目标发过且尚未失效：不重复打扰对方，也不重置计时，
         // 而是提示发起者先撤销 —— 附上已填好目标玩家名的【撤销】按钮。
@@ -386,7 +413,9 @@ public final class TpaRequests {
 
         // 在遍历中只做摘除与记录，发消息留到遍历结束后统一执行，
         // 以免在迭代 PENDING 的过程中间接修改该表
-        List<RequestKey> expired = new ArrayList<>();
+        // 到期项连同方向一并记下：expire() 要据此为超时方生成回发按钮。
+        // 用 Map.entry 复制出不可变快照，避免持有已被 iterator 移除的 Map.Entry 视图
+        List<Map.Entry<RequestKey, Movement>> expired = new ArrayList<>();
         List<ServerPlayer> orphanedPlayers = new ArrayList<>();
 
         var iterator = PENDING.entrySet().iterator();
@@ -409,34 +438,80 @@ public final class TpaRequests {
                 continue;
             }
             iterator.remove();
-            expired.add(entry.getKey());
+            expired.add(Map.entry(entry.getKey(), entry.getValue().movement));
         }
 
         for (ServerPlayer player : orphanedPlayers) {
             Messages.send(player, KEY_PARTY_OFFLINE);
         }
 
-        for (RequestKey key : expired) {
+        for (Map.Entry<RequestKey, Movement> entry : expired) {
+            RequestKey key = entry.getKey();
             ServerPlayer requester = server.getPlayerList().getPlayer(key.requesterId());
             ServerPlayer target = server.getPlayerList().getPlayer(key.targetId());
             // 上面刚校验过双方在线，此处判空仅为防御
             if (requester != null && target != null) {
-                expire(requester, target);
+                expire(requester, target, entry.getValue());
             }
         }
     }
 
     /**
      * 处理一条超时失效的请求：<b>不执行传送</b>，仅告知双方请求已作废。
+     * <p>
+     * 给超时未回应的一方额外附上【发送请求】按钮，让他能一键把同样的意图发回去
+     * —— 详见 {@link #resendButton}。发起者那边不附按钮：重打一遍原指令即可。
      *
      * @param requester 发起者
      * @param target    目标玩家，即未在期限内回应的一方
+     * @param movement  原请求的方向，用于推算回发按钮该填哪条指令
      */
-    private static void expire(ServerPlayer requester, ServerPlayer target) {
+    private static void expire(ServerPlayer requester, ServerPlayer target, Movement movement) {
         Messages.send(requester, KEY_EXPIRED_REQUESTER,
                 target.getDisplayName(), String.valueOf(TIMEOUT_SECONDS));
         Messages.send(target, KEY_EXPIRED_TARGET,
-                String.valueOf(TIMEOUT_SECONDS), requester.getDisplayName());
+                String.valueOf(TIMEOUT_SECONDS),
+                requester.getDisplayName(),
+                resendButton(target, requester, movement));
+    }
+
+    /**
+     * 构造超时提示里的【发送请求】按钮：填入一条由超时方发回给原发起者、
+     * 且<b>结果与原请求完全一致</b>的指令。
+     * <p>
+     * 因为新旧两条请求的发起者与目标恰好互换，要让「谁移动到哪」保持不变，
+     * 新请求的方向必须与原请求相反：
+     * <ul>
+     *   <li>原为 {@code /tpa}（发起者过去）→ 按钮填 {@code /tphere <原发起者>}；</li>
+     *   <li>原为 {@code /tphere}（目标过去）→ 按钮填 {@code /tpa <原发起者>}。</li>
+     * </ul>
+     * 若原发起者此时恰好又发来了同样意图的请求，这条指令会被 {@link #create} 判定为
+     * 互相同意而直接成交，不会新建请求。
+     *
+     * @param viewer            按钮的观看者，即超时未回应的目标玩家
+     * @param originalRequester 原请求的发起者，新指令将指向他
+     * @param movement          原请求的方向
+     * @return 可点击的【发送请求】按钮组件
+     */
+    private static MutableComponent resendButton(
+            ServerPlayer viewer, ServerPlayer originalRequester, Movement movement) {
+        String command = (movement == Movement.REQUESTER_TO_TARGET ? "/tphere " : "/tpa ")
+                + originalRequester.getGameProfile().name();
+        return button(viewer, KEY_BUTTON_SEND_REQUEST, command, ChatFormatting.AQUA);
+    }
+
+    /**
+     * 求出某条请求被接受后实际移动的那名玩家。
+     * <p>
+     * 用于判断两条方向相反的请求是否指向同一结果：因为它们的发起者与目标互换，
+     * 只要移动方相同，落点必然也相同，即构成「互相同意」。
+     *
+     * @param key      请求的双方身份
+     * @param movement 请求的方向
+     * @return 接受后被传送的那名玩家的 UUID
+     */
+    private static UUID moverOf(RequestKey key, Movement movement) {
+        return movement == Movement.REQUESTER_TO_TARGET ? key.requesterId() : key.targetId();
     }
 
     /**
