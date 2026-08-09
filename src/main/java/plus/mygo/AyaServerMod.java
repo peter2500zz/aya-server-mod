@@ -3,14 +3,14 @@ package plus.mygo;
 import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import plus.mygo.command.AcceptCommand;
 import plus.mygo.command.BackCommand;
 import plus.mygo.command.CancelCommand;
-import plus.mygo.command.ConfirmCommand;
-import plus.mygo.command.DenyCommand;
 import plus.mygo.command.DieCommand;
 import plus.mygo.command.HatCommand;
 import plus.mygo.command.HereCommand;
 import plus.mygo.command.HomeCommand;
+import plus.mygo.command.RejectCommand;
 import plus.mygo.command.TpaCommand;
 import plus.mygo.i18n.ServerLanguage;
 import plus.mygo.tpa.TpaRequests;
@@ -44,14 +44,14 @@ public class AyaServerMod implements ModInitializer {
         // 请求全部保存在内存中，不写入存档，服务器重启后自然清空。
         TpaRequests.register();
 
+        AcceptCommand.register();
         BackCommand.register();
         CancelCommand.register();
-        ConfirmCommand.register();
-        DenyCommand.register();
         DieCommand.register();
         HatCommand.register();
         HereCommand.register();
         HomeCommand.register();
+        RejectCommand.register();
         TpaCommand.register();
     }
 }

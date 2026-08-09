@@ -13,7 +13,7 @@ import plus.mygo.tpa.TpaRequests;
  * /tpa 指令。
  * <p>
  * 仅限玩家执行。向目标在线玩家<b>发起一条传送请求</b>，而非立即传送：目标可在
- * {@link TpaRequests#TIMEOUT_SECONDS} 秒内用 {@code /confirm} 接受或 {@code /deny} 拒绝，
+ * {@link TpaRequests#TIMEOUT_SECONDS} 秒内用 {@code /accept} 接受或 {@code /reject} 拒绝，
  * 未回应则自动接受；发起者可用 {@code /cancel} 撤销。
  * <p>
  * 参数使用 {@link EntityArgument#player()}，提供与原版 /tell 完全一致的玩家补全体验

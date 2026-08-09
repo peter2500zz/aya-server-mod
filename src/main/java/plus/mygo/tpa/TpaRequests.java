@@ -22,7 +22,7 @@ import java.util.UUID;
 /**
  * /tpa 传送请求的登记处与计时器。
  * <p>
- * 承载 {@code /tpa}、{@code /confirm}、{@code /deny}、{@code /cancel} 四条指令共用的状态与逻辑：
+ * 承载 {@code /tpa}、{@code /accept}、{@code /reject}、{@code /cancel} 四条指令共用的状态与逻辑：
  * 发起请求、接受、拒绝、撤销，以及超时失效。指令类只负责参数解析与「无待处理请求」时的提示，
  * 请求流程本身的全部消息由本类发出。
  * <p>
@@ -31,7 +31,7 @@ import java.util.UUID;
  * <p>
  * <b>并发约束。</b>同一时刻：
  * <ul>
- *   <li>每个<b>目标</b>最多只有一个待处理请求 —— 因此 {@code /confirm} 与 {@code /deny} 永远无歧义；</li>
+ *   <li>每个<b>目标</b>最多只有一个待处理请求 —— 因此 {@code /accept} 与 {@code /reject} 永远无歧义；</li>
  *   <li>每个<b>发起者</b>最多只有一个在途请求 —— 因此无参的 {@code /cancel} 永远无歧义。</li>
  * </ul>
  * 违反上述任一约束的新请求会被拒绝并提示发起者，且<b>不会打扰目标</b>。
@@ -195,16 +195,16 @@ public final class TpaRequests {
         // 给目标的请求提示，附【接受】【拒绝】按钮
         Messages.send(target, KEY_REQUEST_RECEIVED,
                 requester.getDisplayName(),
-                button(target, KEY_BUTTON_ACCEPT, "/confirm", ChatFormatting.GREEN),
-                button(target, KEY_BUTTON_DENY, "/deny", ChatFormatting.RED));
+                button(target, KEY_BUTTON_ACCEPT, "/accept", ChatFormatting.GREEN),
+                button(target, KEY_BUTTON_DENY, "/reject", ChatFormatting.RED));
 
         return 1;
     }
 
     /**
-     * 目标接受当前待处理的请求（{@code /confirm}）。
+     * 目标接受当前待处理的请求（{@code /accept}）。
      *
-     * @param target 执行 {@code /confirm} 的玩家
+     * @param target 执行 {@code /accept} 的玩家
      * @return 1 表示已接受并完成传送；0 表示该玩家没有待处理请求
      */
     public static int accept(ServerPlayer target) {
@@ -217,13 +217,13 @@ public final class TpaRequests {
     }
 
     /**
-     * 目标拒绝当前待处理的请求（{@code /deny}）。
+     * 目标拒绝当前待处理的请求（{@code /reject}）。
      *
-     * @param target 执行 {@code /deny} 的玩家
+     * @param target 执行 {@code /reject} 的玩家
      * @param reason 玩家给出的拒绝原因；为 {@code null} 表示未填写
      * @return 1 表示已拒绝；0 表示该玩家没有待处理请求
      */
-    public static int deny(ServerPlayer target, String reason) {
+    public static int reject(ServerPlayer target, String reason) {
         PendingRequest request = PENDING.remove(target.getUUID());
         if (request == null) {
             return 0;

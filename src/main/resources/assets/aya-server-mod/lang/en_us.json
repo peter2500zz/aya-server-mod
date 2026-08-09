@@ -1,6 +1,6 @@
 {
   "aya-server-mod.button.accept": "[Accept]",
-  "aya-server-mod.button.deny": "[Deny]",
+  "aya-server-mod.button.deny": "[Reject]",
   "aya-server-mod.button.cancel": "[Cancel]",
 
   "aya-server-mod.command.here.success": "Your location has been highlighted.",
