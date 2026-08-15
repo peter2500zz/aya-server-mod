@@ -16,7 +16,7 @@
   "aya-server-mod.command.tphere.request.received": "%s 请求你传送过去。\n快捷操作：%s %s",
   "aya-server-mod.command.tpa.accepted.requester": "%s 接受了你的传送请求。",
   "aya-server-mod.command.tpa.accepted.target": "已接受 %s 的传送请求。",
-  "aya-server-mod.command.tpa.auto_accepted": "%s 请求传送到你身边，已自动接受。\n快捷操作：%s",
+  "aya-server-mod.command.tpa.auto_accepted": "%s 已传送到你身边。\n快捷操作：%s",
   "aya-server-mod.command.tpa.expired.requester": "%s 未在 %s 秒内回应，你的传送请求已失效。",
   "aya-server-mod.command.tpa.expired.target": "你未在 %s 秒内回应，%s 的传送请求已失效。\n快捷操作：%s",
   "aya-server-mod.command.tpa.rejected.requester": "%s 拒绝了你的传送请求。",
@@ -28,10 +28,10 @@
   "aya-server-mod.command.tpa.no_pending_incoming": "%s 没有向你发送传送请求。",
   "aya-server-mod.command.tpa.no_pending_outgoing": "你没有向 %s 发送过传送请求。",
 
-  "aya-server-mod.command.auto_accept_tpa.enabled": "已开启自动接受：他人请求传送到你身边时将立即通过，要求你传送过去的请求仍需手动回应。\n快捷操作：%s",
-  "aya-server-mod.command.auto_accept_tpa.disabled": "已关闭自动接受，此后收到的传送请求都需要你手动回应。",
-  "aya-server-mod.command.auto_accept_tpa.status_on": "自动接受：已开启。他人请求传送到你身边时会立即通过。\n快捷操作：%s",
-  "aya-server-mod.command.auto_accept_tpa.status_off": "自动接受：已关闭。收到传送请求时需要你手动回应。\n快捷操作：%s",
+  "aya-server-mod.command.auto_accept_tpa.enabled": "TPA 请求现在自动接受。",
+  "aya-server-mod.command.auto_accept_tpa.disabled": "TPA 请求不再自动接受。",
+  "aya-server-mod.command.auto_accept_tpa.status_on": "正在自动接受 TPA 请求。",
+  "aya-server-mod.command.auto_accept_tpa.status_off": "需要手动接受 TPA 请求。",
 
   "aya-server-mod.command.back.success": "已传送回上次死亡地点。",
   "aya-server-mod.command.back.no_death": "你还没有死亡记录。",

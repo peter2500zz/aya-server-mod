@@ -13,8 +13,7 @@ import plus.mygo.tpa.AutoAcceptTpa;
  * /auto-accept-tpa 指令。
  * <p>
  * 仅限玩家执行。开关「他人请求传送到我身边时无需再问我」这一偏好，默认关闭。
- * 带参数时设置开关（{@code /auto-accept-tpa <true|false>}），
- * 不带参数时回报当前状态并附上切换按钮。
+ * 带参数时设置开关（{@code /auto-accept-tpa <true|false>}），不带参数时回报当前状态。
  * <p>
  * 开关只覆盖 {@code /tpa} 一个方向，且只存在于内存中、重启即恢复关闭 ——
  * 语义与状态均由 {@link AutoAcceptTpa} 承载，本类只负责解析参数并转交。

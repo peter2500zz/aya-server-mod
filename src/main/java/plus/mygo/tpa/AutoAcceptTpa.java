@@ -89,7 +89,7 @@ public final class AutoAcceptTpa {
     public static int set(ServerPlayer player, boolean enabled) {
         if (enabled) {
             ENABLED.add(player.getUUID());
-            Messages.send(player, KEY_ENABLED, offButton(player));
+            Messages.send(player, KEY_ENABLED);
             TpaRequests.acceptAllIncomingTpa(player);
         } else {
             ENABLED.remove(player.getUUID());
@@ -100,18 +100,12 @@ public final class AutoAcceptTpa {
 
     /**
      * 向某玩家回报其当前的开关状态（不带参数的 {@code /auto-accept-tpa}）。
-     * <p>
-     * 回执附带的按钮永远指向<b>另一个</b>状态，因此这条指令同时也是一键切换的入口。
      *
      * @param player 执行指令的玩家
      * @return 1 表示执行成功
      */
     public static int report(ServerPlayer player) {
-        if (isEnabled(player)) {
-            Messages.send(player, KEY_STATUS_ON, offButton(player));
-        } else {
-            Messages.send(player, KEY_STATUS_OFF, onButton(player));
-        }
+        Messages.send(player, isEnabled(player) ? KEY_STATUS_ON : KEY_STATUS_OFF);
         return 1;
     }
 
