@@ -130,12 +130,17 @@ src/main/java/plus/mygo/
 │   ├── ServerLanguage.java  # 服务端翻译表：加载内置 lang 文件、按语言查表
 │   └── Messages.java        # 消息门面：构造带 fallback 的文本并发送
 └── tpa/
-    └── TpaRequests.java     # 传送请求的内存登记处与 tick 计时器
+    ├── TpaRequests.java     # 传送请求的内存登记处与 tick 计时器
+    └── AutoAcceptTpa.java   # 自动接受开关的内存登记处
 ```
 
 `TpaRequests` 同时承载 `/tpa`、`/tphere`、`/accept`、`/reject`、`/cancel` 五条指令。
 两条发起指令共用同一条请求记录（键为「发起者 + 目标」），方向只决定接受后由谁移动，
 因此回应类指令无需关心方向。类名与包名中的 `tpa` 应理解为「传送请求流程」的名字。
+
+`AutoAcceptTpa` 承载 `/auto-accept-tpa`，只存开关本身；「开关为真时该怎么走」由
+`TpaRequests.acceptsAutomatically` 判定 —— **Carpet 假人与玩家开关是同一件事的两个来源，
+必须合流在那一处**，不要再各开一条分支。
 
 - 每条命令独立一个类，放在 `plus.mygo.command` 包下。
 - 命令类对外只暴露一个静态方法 `register()`，由 `AyaServerMod.onInitialize()` 调用。
@@ -289,6 +294,11 @@ aya-server-mod.command.back.no_death
 ```
 
 每个键在使用它的命令类中声明为具名 `private static final String KEY_XXX` 常量，禁止在调用处写裸字符串。
+
+指令名里的连字符在键名中一律换成下划线（`/auto-accept-tpa` → `auto_accept_tpa`）：
+翻译键的惯例是只用 `[a-z0-9_.]`，连字符会与 `aya-server-mod` 这个命名空间前缀混淆。
+指令字面量本身可以带连字符 —— Brigadier 的 `StringReader.isAllowedInUnquotedString`
+允许 `-`，且字面量节点是整串 `equals` 匹配。
 
 ### 代码使用方式
 

@@ -4,6 +4,7 @@ import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import plus.mygo.command.AcceptCommand;
+import plus.mygo.command.AutoAcceptTpaCommand;
 import plus.mygo.command.BackCommand;
 import plus.mygo.command.CancelCommand;
 import plus.mygo.command.DieCommand;
@@ -46,6 +47,7 @@ public class AyaServerMod implements ModInitializer {
         TpaRequests.register();
 
         AcceptCommand.register();
+        AutoAcceptTpaCommand.register();
         BackCommand.register();
         CancelCommand.register();
         DieCommand.register();
