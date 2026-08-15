@@ -47,10 +47,17 @@ import java.util.concurrent.CompletableFuture;
  * 例如 alice {@code /tpa bob} 待处理时 bob 打 {@code /tphere alice}，反之亦然。
  * 两条<b>同向</b>请求（如双方都 {@code /tpa} 对方）结果相反，不构成同意，仍各自独立存在。
  * <p>
- * <b>Carpet 假人立即同意。</b>若装有 Carpet，发给其 {@code /player} 假人的请求会被
- * 当场接受 —— 假人不看聊天栏也不会打指令，让它们干等到超时毫无意义。
- * 该联动是纯运行时软探测（见 {@link #resolveCarpetFakePlayer}），
- * <b>不引入编译期依赖、不使用 Mixin</b>，未装 Carpet 时完全无感。
+ * <b>有两种目标不必逐条回应。</b>二者是同一件事的两个来源，因而合流于
+ * {@link #acceptsAutomatically} 一处判定，命中即当场成交、不新建请求：
+ * <ul>
+ *   <li><b>Carpet 假人</b> —— 不看聊天栏也不会打指令，让它干等到超时毫无意义，
+ *       故<b>两个方向都</b>视为同意。该联动是纯运行时软探测
+ *       （见 {@link #resolveCarpetFakePlayer}），<b>不引入编译期依赖、不使用 Mixin</b>，
+ *       未装 Carpet 时完全无感；</li>
+ *   <li><b>开了 {@code /auto-accept-tpa} 的玩家</b> —— 他已一次性声明「传过来不必问我」。
+ *       只覆盖 {@code /tpa} 一个方向：{@code /tphere} 会把他本人拽到别处，
+ *       必须每次亲自过目，故照旧进入待回应流程。见 {@link AutoAcceptTpa}。</li>
+ * </ul>
  * <p>
  * <b>请求之间互不排斥。</b>唯一性只落在<b>（发起者, 目标）二元组</b>上：
  * 同一玩家可以同时收到多人的请求，也可以同时向多人发出请求，各自独立计时、独立失效。
@@ -102,6 +109,9 @@ public final class TpaRequests {
 
     /** 目标接受后，给目标自己的提示文本翻译键。 */
     private static final String KEY_ACCEPTED_TARGET = "aya-server-mod.command.tpa.accepted.target";
+
+    /** 因目标开启了自动接受而当场成交时，给目标自己的提示文本翻译键。 */
+    private static final String KEY_AUTO_ACCEPTED = "aya-server-mod.command.tpa.auto_accepted";
 
     /** 请求超时失效后，给发起者的提示文本翻译键。 */
     private static final String KEY_EXPIRED_REQUESTER = "aya-server-mod.command.tpa.expired.requester";
@@ -267,6 +277,42 @@ public final class TpaRequests {
     }
 
     /**
+     * 判断一条请求是否根本不必征求目标同意，可以当场成交。
+     * <p>
+     * 两个来源在此合流，它们是同一件事：<b>目标不会（或无从）逐条回应</b>。
+     * <ul>
+     *   <li><b>Carpet 假人</b> —— 不看聊天栏也不会打指令，让它干等到超时毫无意义，
+     *       因此<b>两个方向都</b>视为同意；</li>
+     *   <li><b>开了 {@code /auto-accept-tpa} 的玩家</b> —— 他已一次性声明「传过来不必问我」，
+     *       但那只覆盖<b>一个方向</b>，见 {@link #hasAutoAcceptOn}。</li>
+     * </ul>
+     *
+     * @param target   请求的目标玩家
+     * @param movement 该请求被接受后由谁移动
+     * @return 可当场成交则返回 {@code true}
+     */
+    private static boolean acceptsAutomatically(ServerPlayer target, Movement movement) {
+        return isCarpetFakePlayer(target) || hasAutoAcceptOn(target, movement);
+    }
+
+    /**
+     * 判断目标是否<b>凭自己开的那个开关</b>接受这条请求。
+     * <p>
+     * 与 {@link #acceptsAutomatically} 的差别只在于不含假人 —— 假人没有开关可关，
+     * 因此这同时也是「回执里该不该附一个【关闭自动接受】按钮」的判据。
+     * <p>
+     * 开关只覆盖 {@link Movement#REQUESTER_TO_TARGET}：那个方向里目标本人不动，风险为零；
+     * 反方向会把他瞬间拽到别处，必须每次亲自过目（详见 {@link AutoAcceptTpa}）。
+     *
+     * @param target   请求的目标玩家
+     * @param movement 该请求被接受后由谁移动
+     * @return 目标开了自动接受、且方向在覆盖范围内则返回 {@code true}
+     */
+    private static boolean hasAutoAcceptOn(ServerPlayer target, Movement movement) {
+        return movement == Movement.REQUESTER_TO_TARGET && AutoAcceptTpa.isEnabled(target);
+    }
+
+    /**
      * 发起一条传送请求。{@code /tpa} 与 {@code /tphere} 共用本方法，仅 {@code movement} 不同。
      *
      * @param requester 发起者，即打出指令的一方
@@ -302,14 +348,6 @@ public final class TpaRequests {
             return 1;
         }
 
-        // Carpet 假人不会看聊天栏，更不会打指令，让它们干等到超时毫无意义 ——
-        // 直接视为立即同意。排在互相同意之后：那条分支要消耗一条已存在的请求，
-        // 语义更具体，应优先。（实际上假人从不持有待处理请求，两者不会同时命中。）
-        if (isCarpetFakePlayer(target)) {
-            complete(requester, target, movement);
-            return 1;
-        }
-
         // 已向同一目标发过且尚未失效：不重复打扰对方，也不重置计时，
         // 而是提示发起者先撤销 —— 附上已填好目标玩家名的【撤销】按钮。
         // 注意此处不区分那条请求原本是哪个方向：两个方向共用同一个键，
@@ -321,9 +359,24 @@ public final class TpaRequests {
             return 0;
         }
 
+        // 目标不必（或无从）逐条回应时，当场成交，不新建请求。
+        // 假人与自动接受开关是同一件事的两个来源，故合流于 acceptsAutomatically 一处判定。
+        //
+        // 排在「已向同一目标发过请求」之后：那种情况说明发起者对目标还有一条在途请求，
+        // 提示他先撤销，比在这里静默丢弃那条记录更清楚，也维持了
+        //「同一对玩家之间至多一条待处理请求」这条不变式。
+        // 对假人来说这个位置与放在前面没有区别 —— 发给假人的请求从不被记录，
+        // 那条检查对它永不命中。唯一的例外是 Carpet 的 /player <名字> shadow
+        // 把一名在线玩家原地换成假人，他此前收到的请求仍在表里，
+        // 于是发起者会先被要求撤销 —— 这同样说得通。
+        if (acceptsAutomatically(target, movement)) {
+            completeAutomatically(requester, target, movement);
+            return 1;
+        }
+
         PENDING.put(key, new PendingRequest(movement));
 
-        // 两条发起指令的差别仅体现在这一对文案上：一边是「我过去」，一边是「你过来」
+        // 两条发起指令的差别仅体现在方向上：一边是「我过去」，一边是「你过来」
         boolean requesterMoves = movement == Movement.REQUESTER_TO_TARGET;
 
         // 给发起者的回执，附【撤销】按钮
@@ -331,17 +384,62 @@ public final class TpaRequests {
                 target.getDisplayName(),
                 cancelButton(requester, target));
 
-        // 给目标的请求提示，附【接受】【拒绝】按钮，两者都已填好发起者玩家名
-        Messages.send(target, requesterMoves ? KEY_REQUEST_RECEIVED : KEY_TPHERE_REQUEST_RECEIVED,
-                requester.getDisplayName(),
-                button(target, KEY_BUTTON_ACCEPT,
-                        "/accept " + requester.getGameProfile().name(), ChatFormatting.GREEN),
-                // 末尾刻意留一个空格：填入聊天栏后光标落在下一个参数位上，
-                // 原版的命令提示会自动显示出可选的「原因」，无需在文案里另行解释
-                button(target, KEY_BUTTON_REJECT,
-                        "/reject " + requester.getGameProfile().name() + " ", ChatFormatting.RED));
+        // 给目标的请求提示，按钮均已填好发起者玩家名。
+        // 两个方向的按钮组不同：自动接受只覆盖 /tpa，因此也只有它附带【自动接受】——
+        // 把一个点了也不管用的按钮摆进 /tphere 的提示里只会误导人
+        if (requesterMoves) {
+            Messages.send(target, KEY_REQUEST_RECEIVED,
+                    requester.getDisplayName(),
+                    acceptButton(target, requester),
+                    rejectButton(target, requester),
+                    AutoAcceptTpa.onButton(target));
+        } else {
+            Messages.send(target, KEY_TPHERE_REQUEST_RECEIVED,
+                    requester.getDisplayName(),
+                    acceptButton(target, requester),
+                    rejectButton(target, requester));
+        }
 
         return 1;
+    }
+
+    /**
+     * 应某玩家开启自动接受，把此刻发给他、仍在等回应的 {@code /tpa} 请求全部接受并传送。
+     * <p>
+     * <b>刻意跳过 {@code /tphere} 请求</b>：自动接受只覆盖「发起者过来」的方向，
+     * 反方向会把他本人拽走，仍须他亲自回应，因此那些请求原封不动地留在表里继续等。
+     * <p>
+     * 每条成交都走 {@link #complete}，即目标看到的仍是平常那句「已接受 X 的传送请求」——
+     * 上一行的开启回执已经说明了原因，此处不必每条都再重复一遍「自动」。
+     *
+     * @param target 刚开启自动接受的玩家，即这些请求的共同目标
+     */
+    static void acceptAllIncomingTpa(ServerPlayer target) {
+        MinecraftServer server = target.level().getServer();
+        UUID targetId = target.getUUID();
+
+        // 先把要成交的请求整体摘出来，再逐条传送：complete() 会发消息也会传送玩家，
+        // 不宜在遍历 PENDING 的过程中调用
+        List<UUID> requesterIds = new ArrayList<>();
+
+        var iterator = PENDING.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<RequestKey, PendingRequest> entry = iterator.next();
+            if (!entry.getKey().targetId().equals(targetId)
+                    || entry.getValue().movement != Movement.REQUESTER_TO_TARGET) {
+                continue;
+            }
+            iterator.remove();
+            requesterIds.add(entry.getKey().requesterId());
+        }
+
+        for (UUID requesterId : requesterIds) {
+            ServerPlayer requester = server.getPlayerList().getPlayer(requesterId);
+            // tick 回调保证只有双方都在线的请求才留在表中，此处判空仅为防御
+            if (requester != null) {
+                complete(requester, target, Movement.REQUESTER_TO_TARGET);
+            }
+        }
     }
 
     /**
@@ -590,9 +688,51 @@ public final class TpaRequests {
      *
      * @param requester 发起者
      * @param target    目标玩家
-     * @param movement  接受后由谁移动，决定下面谁是移动方、谁是落点
+     * @param movement  接受后由谁移动，决定谁是移动方、谁是落点
      */
     private static void complete(ServerPlayer requester, ServerPlayer target, Movement movement) {
+        teleport(requester, target, movement);
+
+        // 两条回执与方向无关：无论谁移动，都是「目标接受了发起者的请求」
+        Messages.send(requester, KEY_ACCEPTED_REQUESTER, target.getDisplayName());
+        Messages.send(target, KEY_ACCEPTED_TARGET, requester.getDisplayName());
+    }
+
+    /**
+     * 未经目标回应就当场成交（判据见 {@link #acceptsAutomatically}）：执行传送并通知双方。
+     * <p>
+     * 发起者那边的回执与被手动接受时完全一致 —— 对他而言结果没有任何区别，
+     * 也没必要让他知道对方是靠开关还是靠手动放行的。
+     * <p>
+     * 目标那边则分两种：凭自己开的开关放行时，明确告诉他「已自动接受」，
+     * 并附上【关闭自动接受】按钮以便随时反悔；假人没有开关可关，沿用平常那句回执
+     *（反正它不看聊天栏，这里只求不给它发一句会误导人的话）。
+     *
+     * @param requester 发起者
+     * @param target    目标玩家
+     * @param movement  接受后由谁移动
+     */
+    private static void completeAutomatically(ServerPlayer requester, ServerPlayer target, Movement movement) {
+        teleport(requester, target, movement);
+
+        Messages.send(requester, KEY_ACCEPTED_REQUESTER, target.getDisplayName());
+
+        if (hasAutoAcceptOn(target, movement)) {
+            Messages.send(target, KEY_AUTO_ACCEPTED,
+                    requester.getDisplayName(), AutoAcceptTpa.offButton(target));
+        } else {
+            Messages.send(target, KEY_ACCEPTED_TARGET, requester.getDisplayName());
+        }
+    }
+
+    /**
+     * 执行传送本身，不发送任何消息 —— 消息由各调用方按成交的缘由自行决定。
+     *
+     * @param requester 发起者
+     * @param target    目标玩家
+     * @param movement  接受后由谁移动，决定下面谁是移动方、谁是落点
+     */
+    private static void teleport(ServerPlayer requester, ServerPlayer target, Movement movement) {
         boolean requesterMoves = movement == Movement.REQUESTER_TO_TARGET;
         ServerPlayer mover = requesterMoves ? requester : target;
         ServerPlayer destination = requesterMoves ? target : requester;
@@ -615,10 +755,32 @@ public final class TpaRequests {
         //（/tphere 下移动方甚至就是接受者本人之外的另一方），更不该因此受伤。
         // 这里显式清零，使传送落点始终从零开始计算坠落伤害。
         mover.resetFallDistance();
+    }
 
-        // 两条回执与方向无关：无论谁移动，都是「目标接受了发起者的请求」
-        Messages.send(requester, KEY_ACCEPTED_REQUESTER, target.getDisplayName());
-        Messages.send(target, KEY_ACCEPTED_TARGET, requester.getDisplayName());
+    /**
+     * 构造一个已填好发起者玩家名的【接受】按钮。
+     *
+     * @param viewer    按钮的观看者，即被征求同意的目标玩家
+     * @param requester 该条请求的发起者
+     * @return 绿色的可点击【接受】按钮组件
+     */
+    private static MutableComponent acceptButton(ServerPlayer viewer, ServerPlayer requester) {
+        return button(viewer, KEY_BUTTON_ACCEPT,
+                "/accept " + requester.getGameProfile().name(), ChatFormatting.GREEN);
+    }
+
+    /**
+     * 构造一个已填好发起者玩家名的【拒绝】按钮。
+     *
+     * @param viewer    按钮的观看者，即被征求同意的目标玩家
+     * @param requester 该条请求的发起者
+     * @return 红色的可点击【拒绝】按钮组件
+     */
+    private static MutableComponent rejectButton(ServerPlayer viewer, ServerPlayer requester) {
+        // 末尾刻意留一个空格：填入聊天栏后光标落在下一个参数位上，
+        // 原版的命令提示会自动显示出可选的「原因」，无需在文案里另行解释
+        return button(viewer, KEY_BUTTON_REJECT,
+                "/reject " + requester.getGameProfile().name() + " ", ChatFormatting.RED);
     }
 
     /**
@@ -635,6 +797,9 @@ public final class TpaRequests {
 
     /**
      * 构造一个可点击的按钮组件。
+     * <p>
+     * 刻意放开到包级可见：{@link AutoAcceptTpa} 的两个按钮要用同一套样式与点击行为，
+     * 为这十来行再单开一个工具类不值当。包外仍然不可见。
      *
      * @param viewer  按钮的观看者，其客户端语言决定按钮文字的 fallback 语言
      * @param key     按钮文字的翻译键
@@ -642,7 +807,7 @@ public final class TpaRequests {
      * @param color   按钮颜色
      * @return 带颜色、点击事件与悬停提示的按钮组件
      */
-    private static MutableComponent button(ServerPlayer viewer, String key, String command, ChatFormatting color) {
+    static MutableComponent button(ServerPlayer viewer, String key, String command, ChatFormatting color) {
         return Messages.of(viewer, key).withStyle(style -> style
                 .withColor(color)
                 // ClickEvent 在 26.2 中是密封接口 + record。
