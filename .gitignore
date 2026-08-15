@@ -32,6 +32,10 @@ bin/
 
 run/
 
+# AI 撰写的 README 草稿：由用户审查后自行改写进 README.md，本身不入库
+
+README.md.ai
+
 # java
 
 hs_err_*.log

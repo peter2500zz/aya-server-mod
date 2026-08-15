@@ -16,9 +16,31 @@
 使 `1.1.0-fabric+26.2` 排序低于 `1.1.0`，影响依赖解析与模组列表显示。
 产物文件名与模组声明版本必须分开设置。
 
+## 接口确认规范（硬约束）
+
+**Minecraft 版本迭代极快，任何关于 API 的「记忆」都不可信任。** 编写涉及某个接口的代码前，
+必须先用下述两条途径之一实际确认签名，二者都做最稳妥：
+
+1. **读字节码**。对 mappings 或任意 jar 用 `javap` 查真实签名，这是唯一的权威来源：
+
+   ```bash
+   # 类的全部公开成员（含继承来的）
+   javap -classpath <jar> net.minecraft.server.level.ServerPlayer
+   # 私有成员与常量池也要看时
+   javap -p -c -classpath <jar> <类名>
+   ```
+
+   工程依赖 jar 的路径可从 Loom 解析后的 classpath 取得（既有做法见 scratchpad 里的 `cp.gradle`）。
+
+2. **查联网文档**。官方或社区维护的开发规范与接口文档（Fabric Wiki、Fabric API Javadoc、
+   Mojang 官方映射表、目标 mod 的源码仓库），确认目标版本对应的用法。
+
+**禁止凭记忆、推理或类比给出接口签名。** 拿不准就先 `javap`，不要先写代码再指望编译器纠错 ——
+编译器只能证伪拼写，证明不了语义。
+
 ## 映射规范
 
-Minecraft 26.1 起使用 Mojang 官方类名，**禁止使用 Yarn 映射名**。编写代码前必须查阅当前版本文档确认 API，禁止凭记忆或推理猜测接口。
+Minecraft 26.1 起使用 Mojang 官方类名，**禁止使用 Yarn 映射名**。
 
 常用对照：
 
@@ -38,9 +60,42 @@ Minecraft 26.1 起使用 Mojang 官方类名，**禁止使用 Yarn 映射名**�
 **最小侵入，最大兼容。**
 
 - 优先使用原版封装好的高层接口，不直接操作内部状态。
-- 非必要**禁止使用 Mixin**。如确需使用，须在 commit 说明中给出理由。
-- 不引入任何非必要的第三方依赖。
 - 不修改现有原版行为，只扩展。
+
+### 脆弱代码：先穷尽方案，再申请许可
+
+以下三类写法**脆弱**：它们要么在版本更新时静默失效，要么破坏与其他 mod 的兼容。
+
+| 类别 | 为什么脆弱 |
+|------|-----------|
+| **魔法数字** | 语义只存在于作者脑中，原版调整后无人知道该改哪个 |
+| **破坏兼容性的 Mixin** | `@Overwrite`、大范围 `@Redirect` 等会与其他 mod 抢同一注入点 |
+| **反射** | 编译期无检查，字段/方法一改名就在运行时才炸 |
+
+**并非一律禁止，而是「最后手段」。** 决定使用前必须：
+
+1. 先实地考察所有替代方案（原版高层 API、Fabric API 事件、`@Inject` 等非侵入式 Mixin 等）；
+2. 确认全部不可行后，用 **AskUserQuestion 工具**向用户说明「考察了哪些方案、各自为何不可行、
+   拟采用哪种脆弱写法、风险是什么」，取得许可后方可动手；
+3. 落地时在代码注释与 commit 说明中同时写明理由。
+
+**未经许可擅自使用，等同于违规。**
+
+已批准的既有例外（无需重复申请，但改动时须遵守原有约定）：
+
+- **mod 联动的软探测**（`Class.forName` + `Class.isInstance`）。这是用户明确要求的方案：
+  唯一的替代是引入编译期依赖，那会让本模组在对方缺席时直接无法加载，代价更大。
+  约束见下节，现有实现见 `TpaRequests.resolveCarpetFakePlayer`。
+
+### 依赖：不要造轮子
+
+重复造轮子会平白增大产物体积、堆积难读的低质代码。
+
+- **普通第三方库**：确有需要即可直接添加，无需申请。仍应权衡体积，且优先用 JDK 与原版已有的能力。
+- **把其他 mod 作为依赖**：须先确认它能干脆利落地解决当前问题（而非只沾边），
+  再用 **AskUserQuestion 工具**向用户申请，说明它解决什么、替代方案是什么、引入后的代价。
+  未获许可不得写进 `build.gradle` 或 `fabric.mod.json` 的 `depends`。
+- 注意区分**依赖**与**联动**：联动是软探测、对方缺席照常工作（见下节），不受此条约束。
 
 ### 与其他模组的联动
 
@@ -260,18 +315,59 @@ Messages.send(target, KEY_SUCCESS_TARGET, executor.getDisplayName());
 
 ## Git 规范
 
-- 每个功能里程碑单独 commit，commit message 使用 `feat: / fix: / refactor: / docs:` 前缀。
+### 分支：每个里程碑一条
+
+**不在 `master` 上直接开发。** 每个功能里程碑开一条分支，完工验证通过后合回 `master`：
+
+```bash
+git switch -c feat/tphere        # 分支名用 <类型>/<简短英文描述>
+# ... 开发、分多个 commit ...
+git switch master
+git merge --no-ff feat/tphere    # --no-ff 保留里程碑的边界，便于整体回滚
+git branch -d feat/tphere
+```
+
+里程碑内部仍应拆成多个语义完整的 commit，不要攒成一个巨型提交。
+
+### Commit message
+
+遵循 [Conventional Commits](https://www.conventionalcommits.org/)，**一律使用纯英文**：
+
+```
+<type>(<scope>): <subject>
+
+<body：为什么这么改，而不是改了什么>
+```
+
+- `type` 取 `feat` / `fix` / `refactor` / `docs` / `chore` / `test` / `build`。
+- `subject` 用祈使句、小写开头、不加句号。
+- 用到脆弱写法（反射、Mixin 等）时，必须在 body 中给出理由。
+
+### 其他
+
 - GPG 签名已在本仓库关闭（`commit.gpgsign=false`）。
 - **在开始任何任务前，必须先执行 `git status` 检查未提交变更。**
   若存在未提交文件，说明用户进行了手动修改；须先阅读 `git diff` 理解变更内容，
   为其完成提交后，再执行后续任务。
 
+### README 分工
+
+| 文件 | 语言 | 归属 | 追踪 |
+|------|------|------|------|
+| `README.md.ai` | 中文 | **由 AI 自由编写与维护** | 否（已进 `.gitignore`） |
+| `README.md` | 由用户决定 | 用户审查 `README.md.ai` 后自行改写并提交 | 是 |
+
+功能有变动时更新 `README.md.ai` 即可，**不要改动 `README.md`**，那是用户的产出。
+
 ## 禁止事项
 
-- 禁止使用 Mixin（除非有充分理由且经过确认）。
+- 禁止未经 AskUserQuestion 申请就使用魔法数字、破坏兼容性的 Mixin、反射 —— 见「脆弱代码」。
+- 禁止未经 AskUserQuestion 申请就把其他 mod 加为依赖 —— 见「依赖：不要造轮子」。
 - 禁止使用 Yarn 映射名。
-- 禁止凭推理猜测 API —— 必须查阅对应版本文档或源码。
-- 禁止为假设性未来需求添加抽象层或冗余逻辑。
+- 禁止凭记忆或推理猜测 API —— 必须先 `javap` 或查联网文档确认，见「接口确认规范」。
+- 禁止在 `master` 上直接开发功能；禁止用中文写 commit message。
+- 禁止改动 `README.md` —— 那是用户的产出，AI 只维护 `README.md.ai`。
+- 禁止为假设性未来需求添加抽象层或冗余逻辑，也禁止重复造已有库的轮子。
 - 禁止省略注释或使用英文注释（代码标识符除外）。
 - 禁止在命令类中直接调用 `sendSuccess` / `sendFailure` / `sendSystemMessage` 发送自造文本 ——
   一律经由 `Messages`，否则会绕过服务端查表，未装本 mod 的客户端将看到裸露的翻译键。
