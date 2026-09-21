@@ -6,9 +6,9 @@
 
 | 项目 | 版本 |
 |------|------|
-| Minecraft | 26.2（Mojang 官方映射） |
-| Fabric Loader | 0.19.3 |
-| Fabric API | 0.152.1+26.2 |
+| Minecraft | 26.3（Mojang 官方映射） |
+| Fabric Loader | 0.19.5 |
+| Fabric API | 0.161.0+26.3 |
 | Java | 25 |
 
 模组功能逻辑全部作用于服务端，但 `environment` 设为 `"*"`，因此在单人、局域网（集成服务器）以及专用服务器中均可正常加载。
@@ -104,7 +104,7 @@ Beta:  /accept Alpha        ← 点【接受】即填好此行
 ```
 
 构建产物位于 `build/libs/`，命名格式为 `asm-<模组版本>-fabric+<MC 版本>.jar`，
-例如 `asm-1.1.0-fabric+26.2.jar`。把它放进服务器的 `mods/` 目录即可（带 `-sources` 后缀的是源码包，无需部署）。
+例如 `asm-1.1.0-fabric+26.3.jar`。把它放进服务器的 `mods/` 目录即可（带 `-sources` 后缀的是源码包，无需部署）。
 
 > 文件名里的版本后缀只用于区分构建产物，不会写进模组自身的版本号 ——
 > `fabric.mod.json` 中始终是纯 SemVer 的 `1.1.0`。
